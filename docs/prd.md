@@ -245,6 +245,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world.
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code.
 
 If you add a mechanic, write the player-facing rule here in the same commit.
