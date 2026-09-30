@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "wallHouse.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

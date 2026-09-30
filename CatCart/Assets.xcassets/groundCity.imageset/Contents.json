@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "groundCity.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

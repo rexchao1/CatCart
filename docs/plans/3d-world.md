@@ -1,0 +1,59 @@
+# Plan: 3D world, flat cat
+
+Goal: make Cat Cart feel seamless like Subway Surfers. The road, buildings, and cat trees become real 3D in SceneKit. The cat, coyotes, and food stay as the current 2D pictures, turned to face the camera.
+
+Decided by Rex on 2026-09-30, over "stay 2D and polish" and "full 3D characters now".
+
+## Why
+
+Screenshots of the 2D build (every world) showed:
+
+- Side walls are one texture stretched on flat slabs. They read as a canyon, not a street.
+- Four art styles at four scales: painted sky, photo-real cat, cut-out buildings, flat floor tiles.
+- Coyotes and food are specks until the last half second. The cat tree reads as a far tower.
+- Floor moiré in city and house. White lane lines look like debug.
+- No shadows. Everything floats.
+
+Most of the Subway Surfers look is real depth: the road bending down over the horizon, fog, buildings with sides. That needs 3D.
+
+## Constraints
+
+- Every locked call in `docs/prd.md` stays: the cat, the La Croix cart, coyotes you jump, wet food, cat-tree trains, four worlds at ~10s, the controls, the jump hang and slam.
+- SceneKit, not RealityKit. SceneKit has built-in fog, a curved-world bend as a short shader-modifier string, and `overlaySKScene` so the SpriteKit HUD carries over. Apple soft-deprecated it at WWDC25 (maintenance only, no removal planned). Fine for a gift app. RealityKit is the move if SceneKit ever breaks.
+- Cat, coyote, and food art stay 2D until Rex locks the cat stills (PRD rule).
+- World art from CC0 kits only (Kenney, Quaternius), so no license questions. Keep source files in `art/`.
+- Keep teaching comments. One game file plus the HUD overlay, not an engine.
+
+## Done when
+
+- The PRD "done when" list holds in the 3D build.
+- A run through all four worlds reads as one continuous place in simulator screenshots.
+- Coyotes, food, and trees are readable well before they arrive.
+- Every object has a shadow and nothing shimmers.
+
+## Steps
+
+| # | Step | State |
+|---|---|---|
+| 0 | Project in Git, 2D game and this plan saved as the first commit | done |
+| 1 | Test build, thrown away after: one city street in SceneKit with the curved road, fog, chase camera, a few Kenney buildings, the cat picture, a blob shadow. Screenshot next to the 2D game. Question it answers: does the soft realistic cat sit right in a cartoon 3D world? | not started |
+| 2 | Move the game rules to 3D coordinates: lanes, jump hold and slam, coyotes, food, tree ride, spawn patterns, speed ramp, crash, best meters. HUD and panels via `overlaySKScene`. | not started |
+| 3 | Cat tree as a real 3D train: long carpeted block, sisal posts, obvious rideable roof. Ride length equals real length. | not started |
+| 4 | Four worlds from modular segments, one shared bright palette. World change blends sky and fog color while the road ahead turns into the next place. Needs Rex's OK, since the PRD says crossfade. | not started |
+| 5 | Feel polish: camera lag on lane change, landing squash, wheel spin, dust, slight view widening with speed. | not started |
+| 6 | Later, after Rex locks the cat: 3D cat-in-cart and coyote from Meshy (paid plan, so no credit line), rigged. | waiting on Rex |
+
+Check after each step: `scripts/e2e_visual.sh`, screenshots reviewed.
+
+## Open
+
+- Art style: low-poly cartoon kits next to a soft, realistic cat. Step 1 answers it. If they clash, the fallback is restyling the kits (flat-color toon shading) or regenerating the cat softer.
+- World-change style (step 4).
+- Camera numbers. Starting guess: field of view about 65 degrees, camera about 3.5 m up and 6 m back, tilted down about 20 degrees. Tune by eye.
+
+## Research notes
+
+- SceneKit status: https://developer.apple.com/videos/play/wwdc2025/288/
+- Curved world: push each vertex down by k times distance squared in a geometry shader modifier. Widen culling bounds.
+- Asset kits: Kenney City/Furniture/Nature kits, Quaternius nature and farm packs (all CC0, GLB/FBX). Convert with Reality Converter or Blender to USDZ/SCN.
+- USDZ keeps one animation timeline. Multi-clip rigs go end to end in Blender's NLA editor, then split by time in code. Only matters at step 6.

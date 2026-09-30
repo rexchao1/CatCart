@@ -1,0 +1,49 @@
+Pick what you like. Delete the rest.
+The game currently uses the files marked DEFAULT in CatCart/Assets.xcassets.
+
+PLAYER (rear view, lilac British Shorthair kitten in a light-blue 12-pack cart)
+  sitting-small-wheels.png   DEFAULT
+  sitting-big-wheels.png
+  sitting-wrapped-case.png   sealed 12-pack wrap, cat popping out the top
+  laying-small-wheels.png
+  laying-big-wheels.png
+  jump-out.png               3/4 hop, not used in-game yet
+
+COYOTE
+  snarl-open/mid/closed.png  DEFAULT animation frames (face cycle)
+  side-cartoon.png
+
+FOOD
+  chicken.png                DEFAULT collectible
+  salmon.png
+
+CAT TREE (the 'train')
+  cubby.png                  DEFAULT one-lane rideable tree
+  long-runway.png            long perspective track, extra option
+
+ROADSIDE (live defaults in Assets.xcassets, extras here)
+  city: lamp, hydrant+crate (brick shop still in scenery/ as extra)
+  jungle: banana plant, moss rock
+  house: monstera, doorway wall, radiator
+  farm: sunflowers, hay bale (fence still in scenery/ as extra)
+
+WALLS (1/z shoulder fill, live defaults in Assets.xcassets)
+  wallCity.png     brick windows
+  wallJungle.png   dense leaves
+  wallHouse.png    cream hallway
+  wallFarm.png     wheat and fence
+  extras in art/options/walls
+
+BACKGROUNDS (cycle every 10s: city, jungle, house, farm)
+  city-clear.jpg             DEFAULT city
+  jungle-path.jpg            DEFAULT jungle
+  house-hall.jpg             DEFAULT house
+  farm-lane.jpg              DEFAULT farm
+  city-taxi.jpg              extra
+  jungle-stones.jpg          extra
+
+UI
+  panel-paws.png             DEFAULT overlay panel
+  button-paw.png             DEFAULT
+  hud-bar.png                DEFAULT
+  panel-cans.png
