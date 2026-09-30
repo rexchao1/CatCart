@@ -362,10 +362,10 @@ def road_house():
     # Three runner rugs, one per lane. Wood shows between them as the separator.
     rug = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     rw = 0.268 * S / 2  # half width
-    field = (0xC8, 0x4A, 0x3A)
-    border = (0xF4, 0xE2, 0xB8)
-    inner = (0x2E, 0x8C, 0x8A)
-    gold = (0xF0, 0xB8, 0x3C)
+    field = (0xD9, 0x8A, 0x7E)
+    border = (0xF6, 0xEA, 0xD2)
+    inner = (0x8C, 0xB8, 0xA6)
+    gold = (0xEE, 0xCB, 0x86)
     # Continuous rug strips go on their own canvas, drawn through all three
     # tiles, keeping the middle. Motifs go on a folded canvas on top.
     strips = Wrap((S, S))
@@ -375,15 +375,15 @@ def road_house():
         strips.rect((cx - rw, -S, cx + rw, 2 * S), border + (255,))
         strips.rect((cx - rw + 16, -S, cx + rw - 16, 2 * S), inner + (255,))
         strips.rect((cx - rw + 26, -S, cx + rw - 26, 2 * S), field + (255,))
-        # Diamonds down the middle, 4 per tile.
-        for k in range(4):
-            cy = (k + 0.5) * S / 4
-            dh, dwid = 92, rw - 44
+        # Diamonds down the middle, 2 per tile, kept small so the rug stays calm.
+        for k in range(2):
+            cy = (k + 0.5) * S / 2
+            dh, dwid = 70, rw - 70
             wr.poly([(cx, cy - dh), (cx + dwid, cy), (cx, cy + dh), (cx - dwid, cy)], gold + (255,))
             wr.poly([(cx, cy - dh + 18), (cx + dwid - 18, cy), (cx, cy + dh - 18), (cx - dwid + 18, cy)], field + (255,))
             wr.poly([(cx, cy - 34), (cx + 30, cy), (cx, cy + 34), (cx - 30, cy)], inner + (255,))
             # Little cream dots between diamonds.
-            dy = cy + S / 8
+            dy = cy + S / 4
             wr.ellipse((cx - 9, dy - 9, cx + 9, dy + 9), border + (255,))
             for sx in (-1, 1):
                 ex = cx + sx * (rw - 44)
@@ -489,9 +489,9 @@ C = 512
 
 
 def carpet(dark=False, seed=0):
-    top = (0xF2, 0xE0, 0xC0)
+    top = (0xEB, 0xCF, 0xA0)
     if dark:
-        top = (0xDC, 0xC6, 0x9E)
+        top = (0xC8, 0xA0, 0x6C)
     base = solid((C, C), top)
     base = shade(base, noise((C, C), (6, 6), 60 + seed), -0.07)
     # Fluffy loops: mid and fine noise, lightened and darkened.

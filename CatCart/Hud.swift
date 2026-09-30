@@ -76,7 +76,7 @@ final class Hud: SKScene {
         foodChip.position = CGPoint(x: size.width * 0.74, y: y)
         metersLabel.position = CGPoint(x: size.width * 0.28 - 28, y: y)
         foodLabel.position = CGPoint(x: size.width * 0.74 - 28, y: y)
-        panel.position = CGPoint(x: size.width / 2, y: size.height * 0.62)
+        panel.position = CGPoint(x: size.width / 2, y: size.height * 0.70)
         flash.size = size
         flash.position = CGPoint(x: size.width / 2, y: size.height / 2)
         if let panelBack = panel.childNode(withName: "back") as? SKSpriteNode {

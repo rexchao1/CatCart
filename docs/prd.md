@@ -162,6 +162,7 @@ Defaults in the game today:
 | Cat tree | cubby tree with a flat roof |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
+| App icon | farm-road (kitten in cart, blue sky), from `scripts/make_icon.py` |
 
 If he drops a different PNG onto the matching imageset, that is the new default. Honor it.
 
@@ -191,7 +192,6 @@ Known gaps against this PRD:
 - Cat and coyotes are 2D pictures in a 3D world. 3D models wait until Rex locks the cat (see `docs/plans/3d-world.md`, step 6).
 - Coyote faces are three stills, not a harvested video cycle.
 - No sound.
-- App icon is still the old orange tabby.
 - Title screen is "tap to dash", not a real home.
 
 ---

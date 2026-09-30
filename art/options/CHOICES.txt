@@ -47,3 +47,8 @@ UI
   button-paw.png             DEFAULT
   hud-bar.png                DEFAULT
   panel-cans.png
+
+APP ICON (from scripts/make_icon.py, kitten in cart on a road)
+  farm-road.png              DEFAULT blue sky, tan road
+  city-road.png              peach city sky, gray road
+  city-close.png             closer crop, city sky

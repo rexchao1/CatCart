@@ -280,6 +280,34 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if e2eAutoRun {
             startRun()
         }
+        if ProcessInfo.processInfo.environment["CATCART_STATS"] == "1" {
+            view.showsStatistics = true
+        }
+        scheduleTestSwipes()
+    }
+
+    /// Test-only: CATCART_SWIPES="2:left,3.5:up,5:right" plays swipes at those
+    /// seconds after launch through the same touch code a finger uses.
+    private func scheduleTestSwipes() {
+        guard let script = ProcessInfo.processInfo.environment["CATCART_SWIPES"] else { return }
+        for step in script.split(separator: ",") {
+            let parts = step.split(separator: ":")
+            guard parts.count == 2, let at = Double(parts[0]) else { continue }
+            let move: CGPoint
+            switch parts[1] {
+            case "left": move = CGPoint(x: -80, y: 0)
+            case "right": move = CGPoint(x: 80, y: 0)
+            case "up": move = CGPoint(x: 0, y: -80)
+            case "down": move = CGPoint(x: 0, y: 80)
+            default: continue
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
+                let start = CGPoint(x: 200, y: 500)
+                self?.touchBegan(at: start)
+                self?.touchMoved(to: CGPoint(x: start.x + move.x, y: start.y + move.y), minimum: 22)
+                self?.touchEnded()
+            }
+        }
     }
 
     func viewDidLayout(size: CGSize, topSafe: CGFloat) {

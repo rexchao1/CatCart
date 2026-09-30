@@ -48,7 +48,7 @@ Check after each step: `scripts/e2e_visual.sh`, screenshots reviewed.
 ## Open
 
 - Not checked on a real iPhone yet: frame rate with shadows on, and how the swipes feel. Simulator only so far.
-- The house rug road is loud. Tone it down in `scripts/make_3d_textures.py` if Rex agrees.
+- House rug toned down and cat tree carpet warmed (2026-09-30). New app icon takes in `art/options/icon`.
 
 - Art style: low-poly cartoon kits next to a soft, realistic cat. Step 1 answers it. If they clash, the fallback is restyling the kits (flat-color toon shading) or regenerating the cat softer.
 - World-change style (step 4).
