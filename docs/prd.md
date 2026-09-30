@@ -4,7 +4,7 @@ Read this before changing look, feel, art, or mechanics. If a request fights thi
 
 Owner: Rex. Player: his mom. The game is a gift, not a store product yet.
 
-Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The world is real 3D in SceneKit. The cat, coyotes, and food are 2D pictures standing in it, facing the camera. The HUD is a SpriteKit layer on top.
+Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The world is real 3D in SceneKit. The kitten, her La Croix cart, and the coyotes are 3D models. Food is a 2D picture standing in the world, facing the camera. The HUD is a SpriteKit layer on top.
 
 ---
 
@@ -40,7 +40,9 @@ Default pose is sitting in the box. Laying-down takes exist so Rex can compare. 
 
 A real La Croix sparkling-water 12-pack: the short, flat cardboard case, icy baby-blue wrap, navy script on the back. It is a custom box that fits him. He sits in it. Wheels on the four corners. Small wheels and big wheels were both generated so Rex can pick.
 
-The generated wrap currently says Sparkle Wave, not La Croix. That is a stand-in because the image model garbles brand lettering. The look we want is still La Croix. If Rex wants the real word on the box, put it on in code or a real label, do not hope the generator spells it.
+The box says LaCroix in navy brush script with "SPARKLING WATER" under it, on an icy-blue wrap with waves and fizz (Rex's call, 2026-09-30: the real name, not Sparkle Wave). The lettering is set in type by `scripts/make_cart_textures.py`, never by an image generator. Four cans stand in the corners. The real brand name is fine for a family gift; it would have to change before any App Store release.
+
+In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten is a 3D model built in Blender from photos of Rex's cat (`scripts/blender/make_cat.py`). Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
 
 ### Obstacles and pickups
 
@@ -71,7 +73,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: distance in meters, food count. Title and death sit on a rounded panel with a paw button. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: distance in meters, food count. The home screen looks at her face from the front: big white "Cat Cart" title, a one-line hint, a paw "Tap to play" button, and the best distance. Tapping swoops the camera around behind her and the run starts. Death sits on a rounded panel with a paw button, and tapping it runs again without going home. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
@@ -95,7 +97,7 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 ### Jump
 
-Swipe up to jump. Hold the hang (about 1.15s on the ground, a bit less on a tree). Swipe down to slam back down. This is not a timed auto-land hop. If she holds the jump, she stays up. If she swipes down, she drops now.
+Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity, about 0.8 s from takeoff to landing on flat ground. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
@@ -135,9 +137,9 @@ Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. 
 | Input | In a run |
 |---|---|
 | Swipe left / right | Change lane |
-| Swipe up | Jump and hang |
+| Swipe up | Jump |
 | Swipe down | Land now |
-| Tap on the ready or death panel | Start a run |
+| Tap on the home screen or death panel | Start a run |
 
 One finger. No on-screen buttons during the run. No tilt steering.
 
@@ -156,8 +158,8 @@ Defaults in the game today:
 
 | Slot | File |
 |---|---|
-| Player | sitting, small wheels |
-| Coyote | 3D snarl open / mid / closed |
+| Player | 3D kitten (`cat_kitten.scn`) in the 3D La Croix cart |
+| Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | chicken can |
 | Cat tree | cubby tree with a flat roof |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
@@ -175,24 +177,22 @@ Sprites are isolated on transparency, no baked ground shadow. The game draws the
 This is the live game, not a wish list.
 
 - SceneKit 3D world, portrait, iPhone 17 simulator scheme. SpriteKit HUD on top.
-- Curved-world road with fog into a painted sky. Three lanes, jump hold and slam.
-- Coyotes with a 3-frame face snarl and a running lope. Jumpable.
+- Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
+- 3D kitten in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns.
+- 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - Wet food, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
-- HUD pills, ready panel, death panel.
+- Home screen facing her, swoop into the run. HUD pills, death panel.
 - Art options sitting in `art/options` for Rex to prune.
 
 Known gaps against this PRD:
 
-- Box lettering is Sparkle Wave, not La Croix.
-- Sitting vs laying and wheel size are not chosen yet.
-- Jump still uses the sitting picture. No wheel spin, no jump pose.
-- Cat and coyotes are 2D pictures in a 3D world. 3D models wait until Rex locks the cat (see `docs/plans/3d-world.md`, step 6).
-- Coyote faces are three stills, not a harvested video cycle.
+- The kitten has no jump pose; she rides the arc sitting.
+- Coyotes gallop in step with each other.
+- Food is still a flat picture.
 - No sound.
-- Title screen is "tap to dash", not a real home.
 
 ---
 
@@ -206,9 +206,9 @@ Do not add these unless Rex asks.
 - Flower pots, yarn, wooden wagon, orange tabby as the player.
 - A fourth lane, or fanning lanes that pivot at the screen edge.
 - Pixel-speed caps that make objects brake at the cat.
-- Unity, Unreal, or any engine outside Apple's frameworks. The 3D world is SceneKit (Rex's call, 2026-09-30). Cat, coyotes, and food stay 2D pictures facing the camera until Rex locks the cat stills.
+- Unity, Unreal, or any engine outside Apple's frameworks. The 3D world is SceneKit (Rex's call, 2026-09-30).
 
-Real character animation (wheels, jump poses, tail) waits until Rex locks the cat and cart stills. He already said that. Ask before spending a generation pass on motion of the cat.
+The kitten's look and pose are Rex's to lock (Rex said the cat gets nailed down later). Ask before reworking her model or adding big motion like jump poses.
 
 Sound and music are not designed. Do not invent a soundtrack.
 
@@ -220,10 +220,9 @@ Future work should ask, not guess.
 
 1. Cat's name, if any.
 2. Sitting or laying, small wheels or big, open tray or sealed wrap.
-3. Keep Sparkle Wave as a cute fake brand, or put real La Croix lettering on the box.
-4. Game title: Cat Cart, or something with the cat's name.
-5. Cozy quiet or louder arcade, once sound exists.
-6. Whether the cubby tree or the long runway is the train.
+3. Game title: Cat Cart, or something with the cat's name.
+4. Cozy quiet or louder arcade, once sound exists.
+5. Whether the cubby tree or the long runway is the train.
 
 ---
 

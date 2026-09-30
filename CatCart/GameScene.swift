@@ -106,8 +106,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let trackDepth: Float = 190
     /// Anything this far behind the cat is off camera and gets recycled.
     private let trackBehind: Float = 10
+    /// Road is kept this far behind her so the home screen, which looks back
+    /// at her face, sees a street running off into the fog.
+    private let roadBehind: Float = 70
     private let roofY: Float = 1.5
-    private let jumpPeak: Float = 2.1
+    private let jumpPeak: Float = 1.9
+    /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. These give
+    /// a 1.9 m peak and about 0.8 s from takeoff to landing on flat ground.
+    private let gravity: Float = 23.75
+    private var jumpSpeed: Float { (2 * gravity * jumpPeak).squareRoot() }
     /// Above this height a coyote passes under you and a tree front is a landing, not a crash.
     private let clearHeight: Float = 0.7
     private let worldSeconds: Float = 10
@@ -115,6 +122,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let cameraBase = SIMD3<Float>(0, 2.9, 4.4)
     private let cameraPitch: Float = -0.055
     private let baseFOV: CGFloat = 56
+    /// Home screen camera: in front of her and a little to the side, looking back at her face.
+    private let homeEye = SIMD3<Float>(0.9, 1.6, -2.75)
+    private let homeTarget = SIMD3<Float>(0, 0.9, 0.25)
 
     /// Running speed in meters per second. Starts friendly, speeds up as you survive.
     private func runSpeed() -> Float {
@@ -126,6 +136,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     // Curved world. Every vertex drops by k * d^2, where d is how far ahead of the cat
     // it is, so the road rolls over a hill. A slow sideways sway makes it feel like the
     // street bends left and right. Runs on the GPU for every 3D thing we draw.
+    private static let playerLightBit = 2
+
     private static let bendModifier = """
     float4 wp = scn_node.modelTransform * _geometry.position;
     float d = max(0.0, -wp.z - 10.0);
@@ -160,6 +172,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private let playerRoot = SCNNode()
     private var catNode: SCNNode!
+    private var cart: KittenCart!
+    private let fillNode = SCNNode()
     private var catShadow: SCNNode!
     private var dust: SCNParticleSystem!
 
@@ -189,6 +203,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return out
     }()
 
+    /// The Blender coyote (Models/coyote_run.scn, from scripts/blender/make_coyote.py).
+    /// Its gallop is baked into the file and plays on every clone by itself.
+    private lazy var coyoteModel: SCNNode? = {
+        guard let url = Bundle.main.url(forResource: "coyote_run", withExtension: "scn"),
+              let file = try? SCNScene(url: url, options: nil) else { return nil }
+        return file.rootNode.childNode(withName: "coyote", recursively: true)
+    }()
+
     private lazy var coyoteFrames: [UIImage] = {
         ["coyoteOpen", "coyoteMid", "coyoteClosed", "coyoteMid"].compactMap { UIImage(named: $0) }
     }()
@@ -213,11 +235,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var tilt: Float = 0
     private var jumping = false
     private var height: Float = 0
-    private var hangLeft: Float = 0
+    private var vy: Float = 0
     private var wasAirborne = false
     private var onPlatform = false
     private var cameraLift: Float = 0
     private var landSquash: Float = 0
+    /// 1 on the home screen, easing to 0 as the camera swoops behind her for the run.
+    private var homeBlend: Float = 1
+    private var homeClock: Float = 0
+    private var runCameraX: Float = 0
+    private var homeRotation = simd_quatf(angle: 0, axis: [0, 1, 0])
 
     private var timeAlive: Float = 0
     private var meters: Float = 0
@@ -276,9 +303,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         view.backgroundColor = UIColor(look(currentPlayerWorld()).fog)
         view.isMultipleTouchEnabled = false
 
-        hud.showReady()
+        hud.showHome(best: Int(bestMeters))
         if e2eAutoRun {
             startRun()
+            homeBlend = 0
         }
         if ProcessInfo.processInfo.environment["CATCART_STATS"] == "1" {
             view.showsStatistics = true
@@ -376,20 +404,41 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         ambient.type = .ambient
         ambientNode.light = ambient
         scene.rootNode.addChildNode(ambientNode)
+
+        // The sun shines the way she drives, so her face would sit in shade on the
+        // home screen. A soft front light lights only her and the cart (bit 2).
+        let fill = SCNLight()
+        fill.type = .directional
+        fill.intensity = 380
+        fill.color = UIColor(red: 1.0, green: 0.96, blue: 0.9, alpha: 1)
+        fill.categoryBitMask = Self.playerLightBit
+        fillNode.light = fill
+        fillNode.simdLook(at: [0.35, -0.55, 1])
+        scene.rootNode.addChildNode(fillNode)
     }
 
     private func buildPlayer() {
         scene.rootNode.addChildNode(playerRoot)
 
-        catShadow = SCNNode(geometry: groundPlane(width: 1.7, length: 1.3, material: shadowMaterial))
+        catShadow = SCNNode(geometry: groundPlane(width: 2.1, length: 1.6, material: shadowMaterial))
         catShadow.position = SCNVector3(0, 0.03, 0)
         catShadow.renderingOrder = 5
         playerRoot.addChildNode(catShadow)
 
-        // The kitten in the La Croix cart, seen from behind.
-        catNode = billboard(image: UIImage(named: "playerBack"), width: 1.35)
-        catNode.childNode(withName: "picture", recursively: false)?.renderingOrder = 3000
+        // The kitten in her La Croix cart.
+        cart = KittenCart()
+        catNode = cart.node
+        catNode.enumerateHierarchy { node, _ in
+            node.categoryBitMask |= Self.playerLightBit
+            node.castsShadow = true
+        }
+        applyLook(to: catNode)
         playerRoot.addChildNode(catNode)
+
+        let aim = SCNNode()
+        aim.simdPosition = homeEye
+        aim.simdLook(at: homeTarget, up: [0, 1, 0], localFront: [0, 0, -1])
+        homeRotation = aim.simdOrientation
 
         // Dust kicked up by the wheels. Particles live in the world, not on the cart,
         // and drift toward the camera, so they trail behind her.
@@ -578,8 +627,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         segments.removeAll()
         genWorld = startWorld
         // The first world also covers the slices already behind the cat.
-        genSegmentsLeft = segmentsPerWorld() + Int(((trackBehind + segmentLength) / segmentLength).rounded(.up))
-        var near = trackBehind + segmentLength
+        genSegmentsLeft = segmentsPerWorld() + Int(((roadBehind + segmentLength) / segmentLength).rounded(.up))
+        var near = roadBehind + segmentLength
         while near - segmentLength > -trackDepth {
             addSegment(near: near)
             near -= segmentLength
@@ -626,7 +675,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Builds each world's slices up front so no slice is built mid-run.
     private func prewarmSegments() {
-        let perWorld = Int((trackDepth + trackBehind) / segmentLength) + 2
+        let perWorld = Int((trackDepth + roadBehind) / segmentLength) + 2
         for world in WorldKind.allCases {
             let built = (0..<perWorld).map { _ in takeSegment(world) }
             built.forEach { $0.inUse = false }
@@ -637,7 +686,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for seg in segments {
             seg.node.position.z += dz
         }
-        while let first = segments.first, first.near - segmentLength > trackBehind {
+        while let first = segments.first, first.near - segmentLength > roadBehind {
             first.node.removeFromParentNode()
             first.inUse = false
             segments.removeFirst()
@@ -659,8 +708,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             step(dt: dt)
         case .ready:
             // The title screen drives slowly so the world is alive behind the panel.
+            homeClock += dt
             moveTrack(dz: runSpeed() * 0.45 * dt)
             updateWorldBlend()
+            cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0)
             updateCamera(dt: dt)
         case .dead:
             updateCamera(dt: dt)
@@ -684,6 +735,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         updateJump(dt: dt)
         updateSteer(dt: dt)
+        cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt)
+        homeBlend = max(0, homeBlend - dt / 0.9)
         updateRide()
         moveItems(dz: dz, dt: dt)
         resolveContacts(dz: dz)
@@ -706,30 +759,45 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // when she rides a tree, but it lags so lane changes and landings feel weighty.
         cameraLift += (floorY - cameraLift) * min(1, 4 * dt)
         let goalX = visualX * 0.6
-        let x = cameraNode.position.x + (goalX - cameraNode.position.x) * min(1, 9 * dt)
+        runCameraX += (goalX - runCameraX) * min(1, 9 * dt)
+        let x = runCameraX
         let y = cameraBase.y + cameraLift * 0.75 + max(0, height - floorY) * 0.12
         cameraNode.position = SCNVector3(x, y, cameraBase.z)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, -tilt * 0.08)
         // A slightly wider view as the run speeds up.
         let boost = CGFloat(max(0, runSpeed() - 17) * 0.45)
         cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0)
+
+        // Home screen, or the swoop from it: mix toward the front view of her face.
+        guard homeBlend > 0 else { return }
+        let t = homeBlend * homeBlend * (3 - 2 * homeBlend)
+        var eye = homeEye
+        eye.x += visualX + sin(homeClock * 0.5) * 0.25
+        eye.y += sin(homeClock * 0.37) * 0.06
+        cameraNode.simdPosition = simd_mix(cameraNode.simdPosition, eye, SIMD3(repeating: t))
+        cameraNode.simdOrientation = simd_slerp(cameraNode.simdOrientation, homeRotation, t)
     }
 
     private func updateJump(dt: Float) {
-        if jumping {
-            hangLeft -= dt
-            if hangLeft <= 0 {
-                slamDown()
+        vy -= gravity * dt
+        height += vy * dt
+        if height < floorY {
+            if vy > 0 {
+                // Still rising past the lip of a tree roof: keep the arc.
+            } else if floorY - height < 0.1 || !onPlatform {
+                height = floorY
+                vy = 0
+                jumping = false
+            } else {
+                // Caught a tree roof low: hop up onto it instead of crashing.
+                height += (floorY - height) * min(1, 18 * dt)
+                vy = 0
+                jumping = false
             }
         }
 
-        let target = floorY + (jumping ? jumpPeak : 0)
-        let rate: Float = jumping ? 9 : 15
-        height += (target - height) * min(1, rate * dt)
-        if !onPlatform && height < 0.01 { height = 0 }
-
-        let airborne = isHighEnough && !onPlatform || (onPlatform && height - roofY > clearHeight)
-        if wasAirborne && !airborne && !jumping {
+        let airborne = height - floorY > 0.15
+        if wasAirborne && !airborne && vy <= 0 {
             landSquash = 1
             puff(at: SCNVector3(visualX, floorY + 0.1, 0.2), count: 10, color: UIColor(white: 1, alpha: 0.9))
             haptic(.medium)
@@ -738,7 +806,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         // Squash on landing, stretch in the air. Small, so she still reads as sitting.
         landSquash = max(0, landSquash - dt * 5)
-        let air = min(1, (height - floorY) / jumpPeak)
+        let air = min(1, max(0, height - floorY) / jumpPeak)
         let squash = sin(landSquash * .pi) * 0.12
         catNode.scale = SCNVector3(1 + squash - air * 0.03, 1 - squash + air * 0.05, 1)
 
@@ -780,7 +848,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             item.z += dz
             item.node.position.z = item.z
             // Transparent pictures draw far to near so they overlap correctly.
-            if item.kind != .tree {
+            if item.kind == .food || item.picture != nil {
                 item.node.renderingOrder = 1000 + Int(item.z * 4)
                 item.node.childNodes.first?.renderingOrder = 1000 + Int(item.z * 4)
             }
@@ -858,6 +926,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             node = takeNode("coyote") { self.makeCoyote() }
             picture = node.childNode(withName: "picture", recursively: true)?.geometry?.firstMaterial
             picture?.diffuse.contents = coyoteFrames.first
+
         case .food:
             node = takeNode("food") { self.makeFood() }
         case .tree:
@@ -890,6 +959,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func makeCoyote() -> SCNNode {
+        if let model = coyoteModel {
+            let node = SCNNode()
+            let coyote = model.clone()
+            // The model's nose is 0.96 m ahead of its origin. Put the nose on the
+            // item's front edge, which is where contact is measured.
+            coyote.position = SCNVector3(0, 0, -0.96)
+            node.addChildNode(coyote)
+            applyLook(to: node)
+            let shadow = shadowNode(width: 1.0, length: 2.2)
+            shadow.position.z = -1.07
+            node.addChildNode(shadow)
+            return node
+        }
+        // No model in the bundle: fall back to the flat snarling picture.
         let node = billboard(image: coyoteFrames.first, width: 1.85)
         // Its own material, so each coyote can snarl on its own beat.
         if let pic = node.childNode(withName: "picture", recursively: true), let m = pic.geometry?.firstMaterial?.copy() as? SCNMaterial {
@@ -1081,12 +1164,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func mountTree() {
         guard !onPlatform else { return }
+        // She keeps her jump arc and comes down on the roof. The landing puff
+        // and haptic come from updateJump when she touches it.
         onPlatform = true
-        jumping = false
-        hangLeft = 0
-        landSquash = 1
-        haptic(.medium)
-        puff(at: SCNVector3(visualX, roofY + 0.1, 0.2), count: 10, color: UIColor(red: 0.92, green: 0.82, blue: 0.64, alpha: 1))
     }
 
     private func collect(_ item: TrackItem) {
@@ -1251,16 +1331,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func jump() {
-        guard !jumping else { return }
+        guard !jumping, height - floorY < 0.1 else { return }
         jumping = true
-        hangLeft = onPlatform ? 0.95 : 1.15
+        vy = jumpSpeed
         haptic(.light)
     }
 
     private func slamDown() {
         guard jumping || height - floorY > 0.05 else { return }
-        jumping = false
-        hangLeft = 0
+        vy = min(vy, -16)
     }
 
     /// Test-only autopilot (CATCART_PILOT=1): jumps coyotes and hops onto trees,
@@ -1280,6 +1359,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func startRun() {
         hud.hidePanel()
+        hud.hideHome()
         state = .running
         untilWave = 30
     }
@@ -1292,7 +1372,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         lane = 1
         jumping = false
         height = 0
-        hangLeft = 0
+        vy = 0
         wasAirborne = false
         onPlatform = false
         tilt = 0

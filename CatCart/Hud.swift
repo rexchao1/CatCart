@@ -11,6 +11,7 @@ final class Hud: SKScene {
     private var metersLabel: SKLabelNode!
     private var foodLabel: SKLabelNode!
     private var panel: SKNode!
+    private var home: SKNode!
     private var flash: SKSpriteNode!
     private var lines: SKNode!
     private var topSafe: CGFloat = 54
@@ -44,6 +45,11 @@ final class Hud: SKScene {
         panel = SKNode()
         panel.zPosition = 50
         addChild(panel)
+
+        home = SKNode()
+        home.zPosition = 50
+        home.isHidden = true
+        addChild(home)
 
         flash = SKSpriteNode(color: .white, size: size)
         flash.alpha = 0
@@ -82,6 +88,8 @@ final class Hud: SKScene {
         if let panelBack = panel.childNode(withName: "back") as? SKSpriteNode {
             panelBack.size.width = size.width * 0.86
         }
+        home.childNode(withName: "top")?.position = CGPoint(x: size.width / 2, y: size.height - self.topSafe - 70)
+        home.childNode(withName: "bottom")?.position = CGPoint(x: size.width / 2, y: size.height * 0.15)
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -113,21 +121,115 @@ final class Hud: SKScene {
         }
     }
 
-    // MARK: - Panels
+    // MARK: - Home
 
-    func showReady() {
+    /// The title screen: big name up top, the kitten in the middle (that's the 3D
+    /// scene), and a paw button with the best distance at the bottom.
+    func showHome(best: Int) {
         panel.removeAllChildren()
-        panel.isHidden = false
-        addPanelBack(height: 300)
-        addTitle("Cat Cart")
-        addLine("Swipe to steer", y: -28)
-        addLine("Jump coyotes  ·  ride the cat trees", y: -56)
-        addLine("Grab the wet food", y: -84)
-        addLine("Tap to dash", y: -122)
-        addPaw(size: 64, y: -168)
-        setMeters(0)
-        setFood(0)
+        panel.isHidden = true
+        home.removeAllChildren()
+        home.isHidden = false
+        home.alpha = 1
+        setPillsHidden(true)
+
+        let top = SKNode()
+        top.name = "top"
+        home.addChild(top)
+        // Stacked navy copies under the white title give it a chunky toy-box edge.
+        for (i, offset) in [CGFloat(6), 4, 2].enumerated() {
+            let shade = titleLabel(color: SKColor(red: 0.11, green: 0.18, blue: 0.40, alpha: i == 0 ? 0.35 : 1))
+            shade.position = CGPoint(x: 0, y: -offset)
+            top.addChild(shade)
+        }
+        top.addChild(titleLabel(color: .white))
+        let tag = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+        tag.text = "Swipe to steer  ·  jump coyotes  ·  ride cat trees"
+        tag.fontSize = 14
+        tag.fontColor = .white
+        tag.verticalAlignmentMode = .center
+        tag.position = CGPoint(x: 0, y: -52)
+        let tagBack = SKShapeNode(rectOf: CGSize(width: min(size.width - 32, 340), height: 30), cornerRadius: 15)
+        tagBack.fillColor = SKColor(red: 0.11, green: 0.18, blue: 0.40, alpha: 0.55)
+        tagBack.strokeColor = .clear
+        tagBack.position = tag.position
+        top.addChild(tagBack)
+        top.addChild(tag)
+        top.setScale(0.6)
+        top.alpha = 0
+        top.run(.group([
+            .fadeIn(withDuration: 0.3),
+            .sequence([.scale(to: 1.06, duration: 0.22), .scale(to: 1, duration: 0.12)])
+        ]))
+
+        let bottom = SKNode()
+        bottom.name = "bottom"
+        home.addChild(bottom)
+        let paw = SKSpriteNode(imageNamed: "uiButton")
+        paw.size = CGSize(width: 96, height: 96)
+        paw.position = CGPoint(x: 0, y: 40)
+        paw.run(.repeatForever(.sequence([
+            .scale(to: 1.08, duration: 0.5),
+            .scale(to: 1.0, duration: 0.5)
+        ])))
+        bottom.addChild(paw)
+        let play = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        play.text = "Tap to play"
+        play.fontSize = 22
+        play.fontColor = .white
+        play.verticalAlignmentMode = .center
+        play.position = CGPoint(x: 0, y: -24)
+        let playShade = play.copy() as! SKLabelNode
+        playShade.fontColor = SKColor(red: 0.11, green: 0.18, blue: 0.40, alpha: 0.8)
+        playShade.position.y -= 2
+        bottom.addChild(playShade)
+        bottom.addChild(play)
+        if best > 0 {
+            let chip = SKSpriteNode(imageNamed: "uiHud")
+            chip.size = CGSize(width: 170, height: 36)
+            chip.position = CGPoint(x: 0, y: -66)
+            bottom.addChild(chip)
+            let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            label.text = "best  \(best) m"
+            label.fontSize = 16
+            label.fontColor = ink
+            label.verticalAlignmentMode = .center
+            label.position = chip.position
+            bottom.addChild(label)
+        }
+        layout(topSafe: topSafe)
     }
+
+    func hideHome() {
+        guard !home.isHidden else { return }
+        home.run(.sequence([.fadeOut(withDuration: 0.25), .run { [weak self] in
+            self?.home.removeAllChildren()
+            self?.home.isHidden = true
+        }]))
+        setPillsHidden(false)
+    }
+
+    private func titleLabel(color: SKColor) -> SKLabelNode {
+        let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        label.text = "Cat Cart"
+        label.fontSize = 62
+        label.fontColor = color
+        label.verticalAlignmentMode = .center
+        return label
+    }
+
+    private func setPillsHidden(_ hidden: Bool) {
+        for node in [metersChip, foodChip, metersLabel, foodLabel] as [SKNode] {
+            node.removeAllActions()
+            if hidden {
+                node.alpha = 0
+            } else {
+                node.run(.fadeIn(withDuration: 0.3))
+            }
+        }
+    }
+
+    // MARK: - Panels
 
     func showDead(meters: Int, food: Int, best: Int) {
         panel.removeAllChildren()

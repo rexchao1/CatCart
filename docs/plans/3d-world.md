@@ -41,13 +41,16 @@ Most of the Subway Surfers look is real depth: the road bending down over the ho
 | 3 | Cat tree as a real 3D train: carpeted roof, sisal posts, cubbies, pom-pom, lengths 11/14/17 m. | done |
 | 4 | Four worlds from Kenney kits (`Scenery.swift`, `CatCart/Models`). Drive-into world change with sky, fog, and light blend (Rex OK'd, PRD updated). | done |
 | 5 | Feel polish: trailing camera, lane roll, landing squash, dust, speed FOV, tip-over crash, shadows. Wheel spin waits for 3D cart. | done |
-| 6 | Later, after Rex locks the cat: 3D cat-in-cart and coyote from Meshy (paid plan, so no credit line), rigged. | waiting on Rex |
+| 6 | 3D kitten, cart, and coyote. Built in Blender by script instead of Meshy: kitten from Rex's photos (`scripts/blender/make_cat.py` + `scripts/build_kitten.swift`), coyote from an NPS public-domain photo (`make_coyote.py` + `build_coyote_scn.swift`, baked 0.45 s gallop). Cart built in code (`KittenCart.swift`) with real La Croix lettering from `scripts/make_cart_textures.py`. Wheels spin, tail sways, ears flick, eyes blink, head leans into turns. | done |
+| 7 | Real home screen: camera in front of her face, title, paw button, best pill; tap swoops the camera behind her into the run. Arc jump replaces the timed hang. | done |
 
 Check after each step: `scripts/e2e_visual.sh`, screenshots reviewed.
 
 ## Open
 
 - Not checked on a real iPhone yet: frame rate with shadows on, and how the swipes feel. Simulator only so far.
+- Rex's cat photos are reference only. They stay out of the repo and out of any external service.
+- Coyote clones gallop in step. Staggering them means copying each part's animation with its own `timeOffset` (untested).
 - House rug toned down and cat tree carpet warmed (2026-09-30). New app icon takes in `art/options/icon`.
 
 - Art style: low-poly cartoon kits next to a soft, realistic cat. Step 1 answers it. If they clash, the fallback is restyling the kits (flat-color toon shading) or regenerating the cat softer.
