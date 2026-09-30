@@ -1,0 +1,33 @@
+Cat Cart 3D scenery: where the models came from
+
+All kit models are by Kenney (https://kenney.nl), license CC0 1.0 (public domain,
+no attribution required). Each kit zip includes License.txt saying so.
+
+Kits used (downloaded 2026-09-30 by scripts/fetch_models.sh):
+  City Kit (Commercial) 2.1   https://kenney.nl/assets/city-kit-commercial
+  City Kit (Suburban) 2.0     https://kenney.nl/assets/city-kit-suburban
+  City Kit (Roads)            https://kenney.nl/assets/city-kit-roads
+  Nature Kit                  https://kenney.nl/assets/nature-kit
+  Furniture Kit               https://kenney.nl/assets/furniture-kit
+  Fantasy Town Kit 2.0        https://kenney.nl/assets/fantasy-town-kit
+
+What ships (CatCart/Models, baked SceneKit archives, vertex colors, no textures):
+  scenery_city.scn    commercial building-a..n, low-detail-building-a..n,
+                      low-detail-building-wide-a/b, detail-awning(-wide), detail-parasol-a
+  scenery_street.scn  roads light-curved, light-square-double, dumpster, construction-cone
+  scenery_suburb.scn  suburban planter, tree-large, tree-small
+  scenery_town.scn    fantasy-town windmill (blades), cart, stall-red, stall-green, lantern
+  scenery_jungle.scn  nature trees, palms, bushes, grass, rocks, log, stump, mushrooms,
+                      hanging moss, flowers (greens/browns recolored)
+  scenery_farm.scn    nature crops (corn, wheat, leafs, pumpkin, melon, dirt row), fences,
+                      trees, bushes, flowers, log stack, stump (recolored)
+  scenery_house.scn   furniture bookcases, sofas, chairs, tables, lamps, plants, rugs, TV,
+                      coat rack, doorway, boxes, books, pillows, speaker, radio, etc.
+
+Built in code (CatCart/Scenery.swift, no source asset): sidewalks, curbs, striped
+awnings, hydrants, benches, planters, bunting garland, jungle branch arch, hallway
+walls/floor/windows/pictures/beams/pendant lamps, barn, silo, windmill tower, hay
+bales, power poles and wires, field stripes, hills.
+
+Rebuild: scripts/fetch_models.sh [download-dir]. The exact model list and color
+remaps live in that script.

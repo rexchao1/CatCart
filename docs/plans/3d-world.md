@@ -36,16 +36,19 @@ Most of the Subway Surfers look is real depth: the road bending down over the ho
 | # | Step | State |
 |---|---|---|
 | 0 | Project in Git, 2D game and this plan saved as the first commit | done |
-| 1 | Test build, thrown away after: one city street in SceneKit with the curved road, fog, chase camera, a few Kenney buildings, the cat picture, a blob shadow. Screenshot next to the 2D game. Question it answers: does the soft realistic cat sit right in a cartoon 3D world? | not started |
-| 2 | Move the game rules to 3D coordinates: lanes, jump hold and slam, coyotes, food, tree ride, spawn patterns, speed ramp, crash, best meters. HUD and panels via `overlaySKScene`. | not started |
-| 3 | Cat tree as a real 3D train: long carpeted block, sisal posts, obvious rideable roof. Ride length equals real length. | not started |
-| 4 | Four worlds from modular segments, one shared bright palette. World change blends sky and fog color while the road ahead turns into the next place. Needs Rex's OK, since the PRD says crossfade. | not started |
-| 5 | Feel polish: camera lag on lane change, landing squash, wheel spin, dust, slight view widening with speed. | not started |
+| 1 | Test build. Skipped as a separate step: Rex asked for the whole thing in one go, so the real build answered it. The soft cat reads fine in the Kenney cartoon world. | done |
+| 2 | Game rules in 3D coordinates, HUD via `overlaySKScene`, input queued to the render thread. Tree side-bump rule added. | done |
+| 3 | Cat tree as a real 3D train: carpeted roof, sisal posts, cubbies, pom-pom, lengths 11/14/17 m. | done |
+| 4 | Four worlds from Kenney kits (`Scenery.swift`, `CatCart/Models`). Drive-into world change with sky, fog, and light blend (Rex OK'd, PRD updated). | done |
+| 5 | Feel polish: trailing camera, lane roll, landing squash, dust, speed FOV, tip-over crash, shadows. Wheel spin waits for 3D cart. | done |
 | 6 | Later, after Rex locks the cat: 3D cat-in-cart and coyote from Meshy (paid plan, so no credit line), rigged. | waiting on Rex |
 
 Check after each step: `scripts/e2e_visual.sh`, screenshots reviewed.
 
 ## Open
+
+- Not checked on a real iPhone yet: frame rate with shadows on, and how the swipes feel. Simulator only so far.
+- The house rug road is loud. Tone it down in `scripts/make_3d_textures.py` if Rex agrees.
 
 - Art style: low-poly cartoon kits next to a soft, realistic cat. Step 1 answers it. If they clash, the fallback is restyling the kits (flat-color toon shading) or regenerating the cat softer.
 - World-change style (step 4).

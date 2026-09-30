@@ -1,5 +1,7 @@
 #!/bin/bash
 # Drive the iPhone simulator: build, auto-run, screenshot a full loop.
+# CATCART_GOD=1 means no crashes. CATCART_PILOT=1 jumps coyotes and hops onto trees.
+# CATCART_WORLD=jungle|house|farm starts in that world.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 UDID="${UDID:-27043DC8-AD54-4138-821B-311D79674E39}"
@@ -25,10 +27,10 @@ launch() {
   xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
   sleep 0.3
   if [[ -n "$world" ]]; then
-    SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 SIMCTL_CHILD_CATCART_WORLD="$world" \
+    SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 SIMCTL_CHILD_CATCART_PILOT=1 SIMCTL_CHILD_CATCART_WORLD="$world" \
       xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null
   else
-    SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 \
+    SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 SIMCTL_CHILD_CATCART_PILOT=1 \
       xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null
   fi
 }
@@ -63,7 +65,7 @@ shot "run_t32s"
 echo "per-world stills..."
 for w in jungle house farm; do
   launch "$w"
-  sleep 1.8
+  sleep 9
   shot "$w"
 done
 

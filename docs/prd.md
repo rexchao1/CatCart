@@ -4,7 +4,7 @@ Read this before changing look, feel, art, or mechanics. If a request fights thi
 
 Owner: Rex. Player: his mom. The game is a gift, not a store product yet.
 
-Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The 2D SpriteKit build is live. The world is moving to 3D in SceneKit (see `docs/plans/3d-world.md`).
+Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The world is real 3D in SceneKit. The cat, coyotes, and food are 2D pictures standing in it, facing the camera. The HUD is a SpriteKit layer on top.
 
 ---
 
@@ -22,7 +22,7 @@ It should feel easy to pick up in an ad, then fair once you are playing. One thu
 
 Mom, on an iPhone, in portrait, probably on the couch. Big readable objects. Generous jump window. A crash should feel silly, not punishing. The cat is cute. The coyotes are mean on purpose, so the cute/danger contrast is the joke.
 
-Rex is learning while we build. Teaching comments in `GameScene.swift` stay. Do not turn this into an engine or a framework.
+Rex is learning while we build. Teaching comments in the Swift files stay. Do not turn this into an engine or a framework.
 
 ---
 
@@ -65,7 +65,9 @@ The run travels through four places, in this order, looping:
 3. Inside a house
 4. Farm
 
-Each world lasts about 10 seconds. The change to the next one is a long, smooth crossfade, not a cut. The ground and the sides have to keep moving during the fade so it does not feel like a slide show.
+Each world lasts about 10 seconds. You drive into the next one: the road ahead turns into the next place, and the sky, fog, and light blend over as the border comes at you, finishing as the cat crosses it. Nothing fades or cuts on the whole screen at once (Rex's call, 2026-09-30, replacing the old crossfade).
+
+The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SOURCES.txt`), in one bright, chunky cartoon style like Subway Surfers. The road is a flat textured strip per world. The sky is a painted gradient whose bottom matches the fog color, so the far road melts into it.
 
 ### UI
 
@@ -79,11 +81,13 @@ Copy Subway Surfers where it matters. Invent around the cat, not around the came
 
 ### Camera and speed
 
-Behind the cat, three lanes, path pinching toward a vanishing point. Objects spawn small and far, grow, and rip past the camera. They must not slow down at the cat or behind him.
+Behind the cat, a little above, three lanes. The road bends down over a hill in the distance ("curved world", a shader on every 3D thing), and fades into fog, like Subway Surfers. Objects come over the crest small, grow, and rip past the camera. They must not slow down at the cat or behind him.
 
-World depth is constant-z. Screen position is 1/z. Far things crawl. Near things rush. Same math for coyotes, food, trees, roadside props, and the ground strips. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
+The cat never moves forward. The whole track (road, scenery, coyotes, food, trees) slides toward the camera at one speed. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
 
-Do not cap motion in screen pixels. Tune arrival time with the seconds-to-cat number in `zSpeed()`, today about 1.45s at the start of a run, speeding up as you survive.
+Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 30. Things appear about 118 m ahead, inside the fog.
+
+The camera trails the cat: it follows her lane partway, rises when she rides a tree, rolls a touch on lane changes, and widens a little as the run speeds up.
 
 ### Lanes
 
@@ -103,6 +107,7 @@ Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 - Ride until the back of the tree passes, then drop to the ground.
 - Swipe to a neighbor lane that also has a tree: stay up.
 - Swipe to a lane with no tree: fall. If a coyote is there, crash.
+- Swipe into the side of a tree from the ground: bump off it and stay in your lane. No crash.
 - Jump from a tree to hop to another tree or to clear something.
 
 Never block all three lanes with no jump or ride out. Two trees plus a food lane is fine. Three coyotes is a forced jump, used rarely.
@@ -117,11 +122,11 @@ Touch to collect, even in the air or on a tree. +1 food, a little distance bonus
 
 ### Crash and retry
 
-White flash, shake, haptic. "Oh no!" with meters, food, and best. Tap to run again. Best meters live in UserDefaults as `bestMeters`.
+White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with meters, food, and best. Tap to run again. Best meters live in UserDefaults as `bestMeters3D` (real meters). The 2D build's `bestMeters` counted about 7x faster, so it is not carried over.
 
 ### Feedback that stays
 
-Lane-change haptic. Jump haptic. Collect puff. Landing puff. Light speed lines. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
+Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. Dust from the wheels. The food pill pulses when you grab food. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
 
 ---
 
@@ -155,12 +160,12 @@ Defaults in the game today:
 | Coyote | 3D snarl open / mid / closed |
 | Food | chicken can |
 | Cat tree | cubby tree with a flat roof |
-| Worlds | city-clear, jungle-path, house-hall, farm-lane |
+| Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
 
 If he drops a different PNG onto the matching imageset, that is the new default. Honor it.
 
-Sprites are isolated on a keyable flat color, no baked ground shadow. Worlds are full 9:16 paintings with a path down the middle and a vanishing point in the upper-middle, so the 3-lane math still fits.
+Sprites are isolated on transparency, no baked ground shadow. The game draws the shadow. World scenery is 3D models in `CatCart/Models`, built into segments by `Scenery.swift`. Road, sky, carpet, and effect textures come from `scripts/make_3d_textures.py`. The old 2D world paintings, walls, ground tiles, and side props are no longer used in the game.
 
 ---
 
@@ -168,16 +173,13 @@ Sprites are isolated on a keyable flat color, no baked ground shadow. Worlds are
 
 This is the live game, not a wish list.
 
-- SpriteKit scene, portrait, iPhone 17 simulator scheme.
-- 1/z track, three lanes, jump hold and slam.
-- Coyotes with a 3-frame face snarl. Jumpable.
-- Wet food collectibles.
-- Cat trees you can ride. Hop to a neighbor tree or fall off the end.
-- Four worlds, 10s each, ~1.6s crossfade.
-- The world is one 1/z corridor: path down the middle, walls up the sides, same math as the coyotes. Far things crawl. Near things rush. No still lower half.
-- The painting only shows through a sky opening at the vanishing point.
-- Side props (lamps, crates, plants, doorways) sit on the road edge and rush off the screen.
-- World change keeps the corridor moving and crossfades into the next place.
+- SceneKit 3D world, portrait, iPhone 17 simulator scheme. SpriteKit HUD on top.
+- Curved-world road with fog into a painted sky. Three lanes, jump hold and slam.
+- Coyotes with a 3-frame face snarl and a running lope. Jumpable.
+- Wet food, single cans and lines of cans, some sitting on tree roofs.
+- Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
+- Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
+- Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
 - HUD pills, ready panel, death panel.
 - Art options sitting in `art/options` for Rex to prune.
 
@@ -185,9 +187,9 @@ Known gaps against this PRD:
 
 - Box lettering is Sparkle Wave, not La Croix.
 - Sitting vs laying and wheel size are not chosen yet.
-- Jump still uses the sitting sprite. No wheel spin, no jump pose in the run.
+- Jump still uses the sitting picture. No wheel spin, no jump pose.
+- Cat and coyotes are 2D pictures in a 3D world. 3D models wait until Rex locks the cat (see `docs/plans/3d-world.md`, step 6).
 - Coyote faces are three stills, not a harvested video cycle.
-- The long-runway cat tree is an extra, not the default. The cubby tree is what the lane math is tuned to.
 - No sound.
 - App icon is still the old orange tabby.
 - Title screen is "tap to dash", not a real home.
@@ -231,7 +233,7 @@ A look or feel change is done when:
 
 - A first-time player can swipe, jump a coyote, ride a tree, and grab food without a tutorial dump.
 - Objects and the ground still rush at the cat, never brake.
-- Worlds still last about 10 seconds and fade instead of cutting.
+- Worlds still last about 10 seconds and you drive into the next one, no full-screen cut.
 - The cat still reads as a grayish lilac British Shorthair kitten in a light-blue 12-pack cart.
 - Rex's chosen art, if he has picked, is what is on screen.
 
@@ -239,8 +241,10 @@ A look or feel change is done when:
 
 ## For later sessions
 
-`GameScene.swift` is the whole game. `CatCartApp.swift` only hosts it. Art lives in `Assets.xcassets`. Spare takes live in `art/options`.
+`GameScene.swift` is the game: world, rules, camera, input. `Scenery.swift` builds each world's roadside from the models in `CatCart/Models`. `Hud.swift` is the flat layer on top. `CatCartApp.swift` only hosts it. Pictures and textures live in `Assets.xcassets`. Spare takes live in `art/options`.
 
-When you change motion, match the ground strips and the side props to the same z-speed as the track items. When you change art, put extras in the options folder and say which imageset is the live default.
+Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. When you change art, put extras in the options folder and say which imageset is the live default.
+
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world.
 
 If you add a mechanic, write the player-facing rule here in the same commit.
