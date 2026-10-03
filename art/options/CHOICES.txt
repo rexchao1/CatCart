@@ -60,3 +60,12 @@ BLENDER KITTEN STUDY (photo-based art option, not the live game model)
   kitten-study/rear.png               rear silhouette comparison
   Rebuild with scripts/blender/make_kitten_study.py in Blender.
   Fine coat geometry is for this render study; game export needs a separate budget pass.
+
+NATURAL-PROPORTION KITTEN, REVISION 2
+  kitten-realistic-v2/kitten-realistic-v2.blend   new anatomy, smaller head, inset eyes, cupped ears
+  kitten-realistic-v2/portrait.png               three-quarter view
+  kitten-realistic-v2/front.png                  front proportions and face
+  kitten-realistic-v2/rear.png                   back and resting tail
+  Rex requested realistic proportions after rejecting the first toy-like study.
+  Rebuild with scripts/blender/make_kitten_realistic.py in Blender.
+  Render study only. Not rigged or optimized for the game's model budget.
