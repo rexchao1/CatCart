@@ -69,3 +69,6 @@ NATURAL-PROPORTION KITTEN, REVISION 2
   Rex requested realistic proportions after rejecting the first toy-like study.
   Rebuild with scripts/blender/make_kitten_realistic.py in Blender.
   Render study only. Not rigged or optimized for the game's model budget.
+
+SAVED KITTEN MODEL
+  art/models/kitten/cat.blend   copy of the natural-proportion revision 2, saved at Rex's requested path
