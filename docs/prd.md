@@ -87,7 +87,7 @@ Behind the cat, a little above, three lanes. The road bends down over a hill in 
 
 The cat never moves forward. The whole track (road, scenery, coyotes, food, trees) slides toward the camera at one speed. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
 
-Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 30. Things appear about 118 m ahead, inside the fog.
+Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 30 over about three minutes. It climbs fast early and settles (about 21 at 30 s, 24 at 1 min, 28.5 at 2 min). Things appear about 118 m ahead, inside the fog.
 
 The camera trails the cat: it follows her lane partway, rises when she rides a tree, rolls a touch on lane changes, and widens a little as the run speeds up.
 
@@ -97,7 +97,7 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 ### Jump
 
-Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity, about 0.8 s from takeoff to landing on flat ground. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
+Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity, about 0.8 s from takeoff to landing on flat ground at the start. As the run speeds up the jump gets quicker, down to about 0.66 s at top speed, with the same height, so it never carries her over half the road. A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
@@ -113,6 +113,16 @@ Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 - Jump from a tree to hop to another tree or to clear something.
 
 Never block all three lanes with no jump or ride out. Two trees plus a food lane is fine. Three coyotes is a forced jump, used rarely.
+
+### Getting harder
+
+Like Subway Surfers: easy to start, harder the longer you last, and still fair at top speed.
+
+- One difficulty ramp drives everything: speed, gaps, the jump, and which obstacle mixes show up.
+- The first 15 s or so are easy mixes only: one coyote, one tree, food lines. Medium mixes (two busy lanes, short slaloms, coyote then tree) join at about 15 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, the rare three-coyote wall) join at about 40 s. Easy mixes thin out but never vanish.
+- Spacing is in time, not meters. A mix plays out the same at any speed, and the breather between mixes shrinks from 1.75 s to 1.05 s.
+- Fairness rule: every lane of every mix can be survived by staying in it and jumping. Two things in one lane are at least about 1.1 s apart. Steering is the easier way through, never the only way.
+- Cat trees get longer as speed rises, so a ride lasts about the same time.
 
 ### Coyotes
 
@@ -244,6 +254,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code.
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. Pilot without god mode is the fairness check: it only jumps, so if it crashes, a mix broke the rule above (the crash prints to the console with the mix number).
 
 If you add a mechanic, write the player-facing rule here in the same commit.

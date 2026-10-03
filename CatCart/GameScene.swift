@@ -86,10 +86,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private struct Spawn {
         let kind: Kind
         let lane: Int
-        /// Extra meters further ahead than the wave's front.
+        /// Extra meters further ahead than the wave's front, written for 17 m/s.
         let ahead: Float
         /// Food that sits on a cat tree's roof.
         var onRoof = false
+        /// A cat tree's length at 17 m/s. Nil picks 11, 14, or 17.
+        var length: Float?
+    }
+
+    /// One obstacle mix. Easy mixes (tier 0) show up from the start, medium (1)
+    /// from about 15 s, hard (2) from about 40 s.
+    private struct Wave {
+        let tier: Int
+        let spawns: [Spawn]
+        /// How often it's picked, next to the other mixes in its tier.
+        var weight: Float = 1
+        /// Can it slide to any lane? Mixes where neighbors matter (hopping from
+        /// tree to tree) can only be mirrored left to right.
+        var rotates = true
     }
 
     /// Best distance, saved on the phone. The 2D build counted "meters" about 7x faster
@@ -111,10 +125,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let roadBehind: Float = 70
     private let roofY: Float = 1.5
     private let jumpPeak: Float = 1.9
-    /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. These give
-    /// a 1.9 m peak and about 0.8 s from takeoff to landing on flat ground.
-    private let gravity: Float = 23.75
-    private var jumpSpeed: Float { (2 * gravity * jumpPeak).squareRoot() }
+    /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. It always peaks
+    /// at 1.9 m. Takeoff to landing is 0.8 s at the start and quickens to about
+    /// 0.66 s at top speed, so a jump doesn't sail over half the road when it's fast.
+    private var jumpAirtime: Float { 0.8 - 0.14 * ramp }
+    private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
+    private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
+    /// A swipe up this soon before landing is remembered and fires on touchdown.
+    private let jumpBufferTime: Float = 0.18
     /// Above this height a coyote passes under you and a tree front is a landing, not a crash.
     private let clearHeight: Float = 0.7
     private let worldSeconds: Float = 10
@@ -126,10 +144,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let homeEye = SIMD3<Float>(0.9, 1.6, -2.75)
     private let homeTarget = SIMD3<Float>(0, 0.9, 0.25)
 
-    /// Running speed in meters per second. Starts friendly, speeds up as you survive.
-    private func runSpeed() -> Float {
-        min(30, 17 + timeAlive * 0.22)
+    /// How far into the run's difficulty we are, 0 at the start to 1 after three
+    /// minutes. It climbs fast early and settles, like Subway Surfers: 0.31 at 30 s,
+    /// 0.56 at 1 min, 0.89 at 2 min. Speed, gaps, the jump, and which obstacle
+    /// mixes can show up all read this one number.
+    private var ramp: Float {
+        let x = min(1, timeAlive / 180)
+        return 1 - (1 - x) * (1 - x)
     }
+
+    /// Running speed in meters per second. 17 at the start, 30 at full ramp.
+    private func runSpeed() -> Float {
+        17 + 13 * ramp
+    }
+
+    /// Distances inside an obstacle mix are written for 17 m/s. Stretching them by
+    /// this keeps their timing the same at any speed: a coyote 17 m behind another
+    /// is always about one second later.
+    private var spacingScale: Float { runSpeed() / 17 }
 
     // MARK: - Shaders
 
@@ -240,6 +272,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var onPlatform = false
     private var cameraLift: Float = 0
     private var landSquash: Float = 0
+    private var jumpBuffer: Float = 0
     /// 1 on the home screen, easing to 0 as the camera swoops behind her for the run.
     private var homeBlend: Float = 1
     private var homeClock: Float = 0
@@ -251,6 +284,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var food = 0
     private var bestMeters: Float = 0
     private var untilWave: Float = 30
+    private var lastWave = -1
     private var lineClock: Float = 0
     private var lastTime: TimeInterval = 0
 
@@ -267,6 +301,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let e2eAutoRun = ProcessInfo.processInfo.environment["CATCART_AUTO_RUN"] == "1"
     private let e2eGod = ProcessInfo.processInfo.environment["CATCART_GOD"] == "1"
     private let e2ePilot = ProcessInfo.processInfo.environment["CATCART_PILOT"] == "1"
+    /// Test-only: CATCART_TIME=120 starts each run that many seconds into the difficulty ramp.
+    private let e2eStartTime = Float(ProcessInfo.processInfo.environment["CATCART_TIME"] ?? "") ?? 0
 
     private var isHighEnough: Bool { height > clearHeight || onPlatform }
     private var floorY: Float { onPlatform ? roofY : 0 }
@@ -734,6 +770,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         updateJump(dt: dt)
+        if jumpBuffer > 0 {
+            jumpBuffer -= dt
+            if jump() { jumpBuffer = 0 }
+        }
         updateSteer(dt: dt)
         cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt)
         homeBlend = max(0, homeBlend - dt / 0.9)
@@ -824,7 +864,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func updateSteer(dt: Float) {
         let goal = laneX(lane)
-        visualX += (goal - visualX) * min(1, 18 * dt)
+        // Slides between lanes a little quicker as the run speeds up.
+        visualX += (goal - visualX) * min(1, (18 + 8 * ramp) * dt)
         playerRoot.position.x = visualX
         tilt *= max(0, 1 - 9 * dt)
         if abs(tilt) < 0.005 { tilt = 0 }
@@ -872,50 +913,118 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     // MARK: - Spawning
 
+    // Every mix follows one fairness rule: each lane can be survived by staying in it
+    // and jumping at the right time. Two things in the same lane are at least 19 m
+    // apart (about 1.1 s), so she can land and jump again. The test pilot only jumps
+    // and never steers, so it should live forever on any mix.
+
+    private static func c(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .coyote, lane: lane, ahead: ahead) }
+    private static func f(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead) }
+    private static func roof(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead, onRoof: true) }
+    private static func t(_ lane: Int, _ ahead: Float, _ length: Float? = nil) -> Spawn {
+        Spawn(kind: .tree, lane: lane, ahead: ahead, length: length)
+    }
+
+    private static let waves: [Wave] = [
+        // Easy: one thing to do at a time.
+        Wave(tier: 0, spawns: [c(1, 0)]),
+        Wave(tier: 0, spawns: [c(0, 0), f(1, 0), f(1, 3), f(1, 6)]),
+        // Food right after a coyote: the reward for jumping it.
+        Wave(tier: 0, spawns: [c(1, 0), f(1, 6), f(1, 9), f(1, 12)]),
+        Wave(tier: 0, spawns: [t(1, 0)]),
+        Wave(tier: 0, spawns: [t(1, 0, 14), roof(1, 4), roof(1, 7), roof(1, 10)]),
+        Wave(tier: 0, spawns: [f(0, 0), f(1, 4), f(2, 8)]),
+        Wave(tier: 0, spawns: [f(1, 0), f(1, 3), f(1, 6), f(1, 9), f(1, 12)]),
+        Wave(tier: 0, spawns: [c(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
+
+        // Medium: two lanes busy, or a short slalom.
+        Wave(tier: 1, spawns: [c(0, 0), c(1, 0), f(2, 0), f(2, 3)]),
+        Wave(tier: 1, spawns: [t(0, 0), c(2, 0)]),
+        Wave(tier: 1, spawns: [t(2, 0), c(0, 0), f(1, 0)]),
+        Wave(tier: 1, spawns: [t(0, 0), t(1, 0), f(2, 0), f(2, 3), f(2, 6)]),
+        Wave(tier: 1, spawns: [c(1, 0), t(0, 0), c(2, 0)]),
+        Wave(tier: 1, spawns: [c(0, 0), c(1, 20), c(2, 40)]),
+        Wave(tier: 1, spawns: [c(0, 0), c(2, 0), c(1, 22)]),
+        Wave(tier: 1, spawns: [t(1, 0, 17), c(0, 8), c(2, 8)]),
+        // Jump the coyote, land, then jump up onto the tree.
+        Wave(tier: 1, spawns: [c(1, 0), t(1, 19, 14), roof(1, 25), roof(1, 28)]),
+
+        // Hard: back-to-back moves.
+        // Three coyotes is a forced jump. Rare, per the PRD.
+        Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(2, 0)], weight: 0.4),
+        Wave(tier: 2, spawns: [t(0, 0), t(1, 0), c(2, 0)]),
+        Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(1, 19), c(2, 19)]),
+        // Ride, then hop to the neighbor tree, or drop and jump the coyote.
+        Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 6, 17), c(0, 33), f(2, 0), f(2, 4), f(2, 8)], rotates: false),
+        Wave(tier: 2, spawns: [t(1, 0, 14), c(0, 10), c(2, 10), c(1, 33)]),
+        Wave(tier: 2, spawns: [c(0, 0), c(2, 10), c(1, 20), c(0, 30)]),
+        // A staircase of trees you can hop up the whole way.
+        Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 10, 14), t(2, 20, 14)], rotates: false),
+        Wave(tier: 2, spawns: [c(1, 0), c(1, 19), c(1, 38), f(0, 8), f(0, 11), f(2, 27), f(2, 30)])
+    ]
+
+    /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
+    /// so the tree pool stays small.
+    private static let treeSizes: [Float] = [11, 14, 17, 20, 24, 28, 32]
+
+    /// Picks a mix for this point in the run: easy ones fade out, harder ones fade in.
+    private func pickWave() -> Int {
+        let tierWeight: [Float] = [
+            max(0.25, 1 - 1.2 * ramp),
+            ramp >= 0.15 ? min(1, 0.3 + ramp) : 0,
+            ramp >= 0.4 ? 1.3 * ramp : 0
+        ]
+        let choices = Self.waves.indices.filter { $0 != lastWave }
+        let weights = choices.map { tierWeight[Self.waves[$0].tier] * Self.waves[$0].weight }
+        var roll = Float.random(in: 0..<weights.reduce(0, +))
+        for (index, weight) in zip(choices, weights) {
+            roll -= weight
+            if roll < 0 { return index }
+        }
+        return choices[0]
+    }
+
     /// Drops one wave of coyotes, food, and trees far ahead.
     /// Returns how many meters until the next wave.
     private func spawnWave() -> Float {
-        let patterns: [[Spawn]] = [
-            [Spawn(kind: .coyote, lane: 0, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 1, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 2, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 0, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 0, ahead: 0), Spawn(kind: .coyote, lane: 2, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 0, ahead: 0), Spawn(kind: .coyote, lane: 1, ahead: 0)],
-            // Food right after a coyote: the reward for jumping it.
-            [Spawn(kind: .coyote, lane: 1, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 6),
-             Spawn(kind: .food, lane: 1, ahead: 9), Spawn(kind: .food, lane: 1, ahead: 12)],
-            [Spawn(kind: .tree, lane: 1, ahead: 0)],
-            [Spawn(kind: .tree, lane: 1, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 4, onRoof: true),
-             Spawn(kind: .food, lane: 1, ahead: 7, onRoof: true), Spawn(kind: .food, lane: 1, ahead: 10, onRoof: true)],
-            [Spawn(kind: .tree, lane: 0, ahead: 0), Spawn(kind: .coyote, lane: 2, ahead: 0)],
-            [Spawn(kind: .tree, lane: 2, ahead: 0), Spawn(kind: .coyote, lane: 0, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 0)],
-            [Spawn(kind: .tree, lane: 0, ahead: 0), Spawn(kind: .tree, lane: 1, ahead: 0), Spawn(kind: .food, lane: 2, ahead: 0)],
-            [Spawn(kind: .food, lane: 0, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 4), Spawn(kind: .food, lane: 2, ahead: 8)],
-            [Spawn(kind: .food, lane: 1, ahead: 0), Spawn(kind: .food, lane: 1, ahead: 3), Spawn(kind: .food, lane: 1, ahead: 6),
-             Spawn(kind: .food, lane: 1, ahead: 9), Spawn(kind: .food, lane: 1, ahead: 12)],
-            [Spawn(kind: .coyote, lane: 0, ahead: 0), Spawn(kind: .tree, lane: 2, ahead: 0)],
-            [Spawn(kind: .coyote, lane: 1, ahead: 0), Spawn(kind: .tree, lane: 0, ahead: 0), Spawn(kind: .coyote, lane: 2, ahead: 0)]
-        ]
-        let pattern = patterns.randomElement() ?? patterns[0]
-        let rot = Int.random(in: 0...2)
+        lastWave = pickWave()
+        let wave = Self.waves[lastWave]
+        let mirror = Bool.random()
+        let rot = wave.rotates ? Int.random(in: 0...2) : 0
+        func place(_ lane: Int) -> Int {
+            let turned = (lane + rot) % 3
+            return mirror ? 2 - turned : turned
+        }
+        let scale = spacingScale
         var reach: Float = 0
-        var treeLength: [Int: Float] = [:]
-        for spawn in pattern where spawn.kind == .tree {
-            let lane = (spawn.lane + rot) % 3
-            let length = [11, 14, 17].randomElement().map(Float.init) ?? 14
-            treeLength[lane] = length
-            addItem(.tree, lane: lane, z: -spawnAhead - spawn.ahead, length: length)
-            reach = max(reach, spawn.ahead + length)
+        var treeEnd: [Int: Float] = [:]
+        for spawn in wave.spawns where spawn.kind == .tree {
+            let lane = place(spawn.lane)
+            // Trees stretch with speed too, so a ride lasts about the same time.
+            let base: Float = spawn.length ?? [11, 14, 17].randomElement() ?? 14
+            let stretched = base * scale
+            let length = Self.treeSizes.min { abs($0 - stretched) < abs($1 - stretched) } ?? base
+            let ahead = spawn.ahead * scale
+            treeEnd[lane] = ahead + length
+            addItem(.tree, lane: lane, z: -spawnAhead - ahead, length: length)
+            reach = max(reach, ahead + length)
         }
-        for spawn in pattern where spawn.kind != .tree {
-            let lane = (spawn.lane + rot) % 3
-            addItem(spawn.kind, lane: lane, z: -spawnAhead - spawn.ahead, onRoof: spawn.onRoof && treeLength[lane] != nil)
-            reach = max(reach, spawn.ahead)
+        for spawn in wave.spawns where spawn.kind != .tree {
+            let lane = place(spawn.lane)
+            let onRoof = spawn.onRoof && treeEnd[lane] != nil
+            var ahead = spawn.ahead * scale
+            if onRoof, let end = treeEnd[lane] {
+                // Snapping the tree length can shorten it a little. Keep roof food on the roof.
+                ahead = min(ahead, end - 1.5)
+            }
+            addItem(spawn.kind, lane: lane, z: -spawnAhead - ahead, onRoof: onRoof)
+            reach = max(reach, ahead)
         }
-        // Leave room to land after the longest thing in this wave.
-        let gap = max(20, 30 - timeAlive * 0.12)
-        return reach + gap
+        // Breathing room after the wave, in seconds so it stays fair at any speed:
+        // 1.75 s at the start down to 1.05 s at top speed. That's always longer than
+        // a jump plus a moment to react.
+        let gapSeconds = 1.75 - 0.7 * ramp
+        return reach + runSpeed() * gapSeconds
     }
 
     private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, onRoof: Bool = false) {
@@ -1180,6 +1289,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func crash() {
+        if e2ePilot {
+            print("CATCART crash t=\(timeAlive) speed=\(runSpeed()) wave=\(lastWave) meters=\(Int(meters))")
+        }
         state = .dead
         jumping = false
         onPlatform = false
@@ -1296,8 +1408,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             case (.running, .right):
                 moveLane(1)
             case (.running, .up):
-                jump()
+                if !jump() { jumpBuffer = jumpBufferTime }
             case (.running, .down):
+                jumpBuffer = 0
                 slamDown()
             default:
                 break
@@ -1330,11 +1443,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func jump() {
-        guard !jumping, height - floorY < 0.1 else { return }
+    /// Returns false if she can't jump yet (still in the air).
+    @discardableResult
+    private func jump() -> Bool {
+        guard !jumping, height - floorY < 0.1 else { return false }
         jumping = true
         vy = jumpSpeed
         haptic(.light)
+        return true
     }
 
     private func slamDown() {
@@ -1361,7 +1477,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         hud.hidePanel()
         hud.hideHome()
         state = .running
+        timeAlive = e2eStartTime
         untilWave = 30
+        lastWave = -1
     }
 
     private func resetRun() {
@@ -1378,6 +1496,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         tilt = 0
         cameraLift = 0
         landSquash = 0
+        jumpBuffer = 0
         timeAlive = 0
         meters = 0
         food = 0
