@@ -1,7 +1,7 @@
 // Turns the Blender export of the kitten into CatCart/Models/cat_kitten.scn.
 //
-//   /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
-//       --python scripts/blender/make_cat.py -- /tmp/cat_kitten.usdc
+//   /Applications/Blender.app/Contents/MacOS/Blender -b art/models/kitten/cat.blend \
+//       --python scripts/blender/export_kitten.py -- /tmp/cat_kitten.usdc
 //   swiftc -O -o /tmp/build_kitten scripts/build_kitten.swift
 //   /tmp/build_kitten /tmp/cat_kitten.usdc CatCart/Models/cat_kitten.scn
 //
@@ -14,8 +14,11 @@
 // - Replaces the imported PBR materials with plain lambert/blinn colors, by
 //   material name, so the look does not depend on the USD importer.
 // - Paints the coat with vertex colors: lighter lilac-gray on the face front
-//   and chest, darker blue-gray on the back, top of the head, and the tail.
+//   and chest, darker on the back, top of the head, and the tail.
 //   Vertex colors multiply the (white) coat diffuse. Non-coat parts get white.
+//
+// The old cartoon kitten (scripts/blender/make_cat.py) used the same material
+// names, so either Blender script feeds this one.
 
 import SceneKit
 import AppKit
@@ -35,10 +38,11 @@ func smooth(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
 }
 func mix(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ t: Float) -> SIMD3<Float> { a + (b - a) * t }
 
-// Coat palette (sRGB). Base is her blue-gray, a touch brighter for the cartoon world.
-let coatBase = rgb(0x959BAA)
-let coatLight = rgb(0xBDBCCC)   // face front and chest, faint lilac
-let coatDark = rgb(0x7F8698)    // back, crown, tail
+// Coat palette (sRGB). Base is the study's warm dove gray, brighter than the
+// render because the game's lights are flatter than Blender's studio.
+let coatBase = rgb(0xA19DA2)
+let coatLight = rgb(0xC4C0C6)   // face front and chest, faint lilac
+let coatDark = rgb(0x86828A)    // back, crown, tail
 
 func makeMaterial(_ name: String) -> SCNMaterial {
     let m = SCNMaterial()
@@ -47,15 +51,15 @@ func makeMaterial(_ name: String) -> SCNMaterial {
     switch name {
     case "kittenCoat": m.diffuse.contents = NSColor.white   // vertex colors carry the coat
     case "kittenMuzzle": m.diffuse.contents = nscolor(0xC6C4D2)
-    case "kittenEarInner": m.diffuse.contents = nscolor(0xD4A9B6)
-    case "kittenNose": m.diffuse.contents = nscolor(0x8C7483)
-    case "kittenMouth": m.diffuse.contents = nscolor(0x5A5060)
+    case "kittenEarInner": m.diffuse.contents = nscolor(0xC39CA4)
+    case "kittenNose": m.diffuse.contents = nscolor(0x6E5A62)
+    case "kittenMouth": m.diffuse.contents = nscolor(0x3A3236)
     case "kittenWhisker":
-        m.diffuse.contents = nscolor(0xE4E4EC)
+        m.diffuse.contents = nscolor(0xECE8E2)
     case "kittenIris":
         m.lightingModel = .blinn
-        m.diffuse.contents = nscolor(0xF09A34)
-        m.emission.contents = nscolor(0x4A2408)   // keeps the copper warm in shade
+        m.diffuse.contents = nscolor(0xD2A846)
+        m.emission.contents = nscolor(0x3C2C08)   // keeps the gold warm in shade
         m.specular.contents = NSColor(white: 0.5, alpha: 1)
         m.shininess = 0.6
     case "kittenPupil":

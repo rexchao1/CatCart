@@ -32,7 +32,7 @@ These came from Rex. Treat them as the product, not sketches.
 
 ### The cat
 
-Lilac British Shorthair kitten, about 6 months. Huge round head, chubby cheeks, tiny ears, compact body. Coat is dove gray with only a faint dusty-lilac cast. Not purple. Not a Russian Blue. Camera is behind him for the run, so the silhouette is the back of that round head over the box rim.
+Lilac British Shorthair kitten, about 6 months, modeled on Rex's real cat. Natural proportions: round head with full cheeks, small cupped ears, golden eyes, a sturdy seated body with distinct front legs (Rex's call, 2026-10-03, replacing the oversized cartoon head). Coat is warm dove gray with only a faint dusty-lilac cast. Not purple. Not a Russian Blue. Camera is behind her for the run, so the silhouette is the back of her round head and shoulders over the box rim.
 
 Default pose is sitting in the box. Laying-down takes exist so Rex can compare. Do not switch the in-game pose until he says which one stays.
 
@@ -42,7 +42,7 @@ A real La Croix sparkling-water 12-pack: the short, flat cardboard case, icy bab
 
 The box says LaCroix in navy brush script with "SPARKLING WATER" under it, on an icy-blue wrap with waves and fizz (Rex's call, 2026-09-30: the real name, not Sparkle Wave). The lettering is set in type by `scripts/make_cart_textures.py`, never by an image generator. Four cans stand in the corners. The real brand name is fine for a family gift; it would have to change before any App Store release.
 
-In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten is a 3D model built in Blender from photos of Rex's cat (`scripts/blender/make_cat.py`). Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
+In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is Rex's Blender model, `art/models/kitten/cat.blend`. `scripts/blender/export_kitten.py` turns it into the game model (drops the strand fur, cuts it to about 23k triangles, splits it into the parts the game animates), and `scripts/build_kitten.swift` writes `cat_kitten.scn` with the in-game colors. Edit the .blend, then rerun both. The old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
 
 ### Obstacles and pickups
 
@@ -168,7 +168,7 @@ Defaults in the game today:
 
 | Slot | File |
 |---|---|
-| Player | 3D kitten (`cat_kitten.scn`) in the 3D La Croix cart |
+| Player | 3D kitten from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | chicken can |
 | Cat tree | cubby tree with a flat roof |

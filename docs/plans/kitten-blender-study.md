@@ -23,3 +23,14 @@ Rex rejected the toy proportions and asked for a much more realistic likeness on
 - [x] Record the option and commit the files.
 
 Revision 2 checks: three Blender renders inspected, including face, tail tip, and ear backs. Saved as a separate option. The face still needs likeness review; the study is not rigged or tested in the game.
+
+## Revision 3: into the game
+
+Rex saved the study as `art/models/kitten/cat.blend` and asked for it in the game on 2026-10-03.
+
+- [x] `scripts/blender/export_kitten.py`: drop studio and strand fur, decimate to about 23k triangles, split into the animated parts, new tail held up over the box.
+- [x] `scripts/build_kitten.swift`: new coat, eye, ear, and nose colors; reads either Blender script.
+- [x] Old cartoon kitten kept as `art/options/player/kitten-cartoon.scn`.
+- [x] Checked: offscreen previews (front, side, run camera) and simulator screenshots of the home screen and a run through all four worlds.
+
+Not checked: frame rate on a real iPhone. The fur look is gone in the game (flat shading); a painted fur texture is the next step if it reads too smooth.

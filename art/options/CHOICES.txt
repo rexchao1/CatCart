@@ -72,3 +72,8 @@ NATURAL-PROPORTION KITTEN, REVISION 2
 
 SAVED KITTEN MODEL
   art/models/kitten/cat.blend   copy of the natural-proportion revision 2, saved at Rex's requested path
+  Live in the game since 2026-10-03: scripts/blender/export_kitten.py converts it.
+
+OLD CARTOON KITTEN (live until 2026-10-03)
+  player/kitten-cartoon.scn   big-head cartoon kitten from scripts/blender/make_cat.py
+  To bring it back, copy it over CatCart/Models/cat_kitten.scn.
