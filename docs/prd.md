@@ -97,7 +97,7 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 ### Jump
 
-Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity, about 0.8 s from takeoff to landing on flat ground at the start. As the run speeds up the jump gets quicker, down to about 0.66 s at top speed, with the same height, so it never carries her over half the road. A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
+Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity. How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.8 s at the start and quickens to about 0.66 s at top speed, so it never carries her over half the road. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
