@@ -52,3 +52,11 @@ APP ICON (from scripts/make_icon.py, kitten in cart on a road)
   farm-road.png              DEFAULT blue sky, tan road
   city-road.png              peach city sky, gray road
   city-close.png             closer crop, city sky
+
+BLENDER KITTEN STUDY (photo-based art option, not the live game model)
+  kitten-study/kitten-study-v1.blend   editable sitting kitten and studio cameras
+  kitten-study/portrait.png           three-quarter portrait
+  kitten-study/front.png              face comparison
+  kitten-study/rear.png               rear silhouette comparison
+  Rebuild with scripts/blender/make_kitten_study.py in Blender.
+  Fine coat geometry is for this render study; game export needs a separate budget pass.
