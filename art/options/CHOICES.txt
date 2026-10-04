@@ -77,3 +77,13 @@ SAVED KITTEN MODEL
 OLD CARTOON KITTEN (live until 2026-10-03)
   player/kitten-cartoon.scn   big-head cartoon kitten from scripts/blender/make_cat.py
   To bring it back, copy it over CatCart/Models/cat_kitten.scn.
+
+3D WET FOOD
+  art/models/food/wet-food.blend      turquoise salmon can with open lid, pull ring, and visible gravy
+  art/models/food/label.png           editable source texture, also packed into the Blender file
+  food/wet-food-3d/portrait.png        full-size preview
+  food/wet-food-3d/pickup.png          transparent pickup view
+  food/wet-food-3d/visibility.png      64 px and 32 px checks beside coyote art
+  Rebuild: scripts/make_food_label.py, then scripts/blender/make_wet_food.py in Blender.
+  Export only the Wet food pickup collection. Preview studio is separate.
+  Source model only; the game still uses its current food sprite.
