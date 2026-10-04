@@ -23,9 +23,9 @@ Branch `perf-smooth`, in the worktree `.claude/worktrees/perf-smooth`.
 |---|---|---|
 | 1 | Frame-time log behind `CATCART_PERF=1` and `scripts/perf_run.sh`; baseline numbers in the simulator | done |
 | 2 | Build everything up front: every tree size, enough coyotes and food for the busiest waves, spare road slices, reusable puffs, sky pictures; have SceneKit prepare them before the run | done |
-| 3 | Merge each cat tree's posts, cubbies, roof and base into one mesh | todo |
-| 4 | Cheaper shadows: forward mode, one cascade, scenery does not cast | todo |
-| 5 | After numbers, screenshots of all four worlds, phone check | todo |
+| 3 | Merge each cat tree's posts, cubbies, roof and base into one mesh (pom-pom and blob shadow stay separate) | done |
+| 4 | Cheaper shadows: forward mode, one cascade out to 45 m, road and scenery do not cast | done |
+| 5 | After numbers and screenshots of all four worlds done; phone check waits for Rex's iPhone | in progress |
 
 ## Numbers
 
@@ -35,8 +35,20 @@ Hitches before (simulator, `scripts/perf_run.sh`): 33 to 50 ms stalls in the fir
 
 After step 2: zero frames over 25 ms in 30 s of house and 50 s of hard city. SceneKit's prepare of all pooled models takes 80 to 120 ms in the background on the home screen.
 
+After steps 3 and 4, same simulator, side by side with the step 2 build, 9 stats-bar samples each:
+
+| Run | Draw calls before | after | Triangles before | after |
+|---|---|---|---|---|
+| House, start of run | ~420 | ~285 | ~730K | ~390K |
+| City, `CATCART_TIME=90` | ~555 | ~340 | ~565K | ~350K |
+
+Waves are random, so single samples swing by 150 either way; the averages are what count. Still zero hitches in house and hard farm. Home screen and all four worlds look the same as before in screenshots, including the cat tree and the shadow under the cart.
+
 Model weights at the start: kitten 23K triangles in 8 parts, coyote 24K in 30 animated parts, food can 6K in 8 parts, road slice 11K to 28K. If the phone still struggles after steps 2 to 4, the next lever is lighter coyote and food exports (a far-away version with fewer triangles).
 
 ## Open
+
+- Phone check: plug in the iPhone, run from Xcode with the `CATCART_PERF=1` environment variable in the scheme, play a run, and read the `CATCART` lines in the console. The simulator uses the Mac's graphics chip, so it can't show heat or GPU limits.
+- Each coyote is now 30 animated pieces (about 60 draw calls with its shadow), the biggest cost left on a busy screen.
 
 - The game slows its clock when a frame runs past 1/30 s, so a hitch reads as slow motion. Left alone unless the log shows it matters.

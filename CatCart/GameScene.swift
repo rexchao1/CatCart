@@ -462,14 +462,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func buildLights() {
         let sun = SCNLight()
         sun.type = .directional
+        // Shadows are the priciest thing on screen, so they're kept lean: only the
+        // cat, coyotes, food, and cat trees cast them (scenery doesn't, see
+        // takeSegment), they're worked out while each surface is lit instead of in
+        // an extra full-screen pass, and one shadow map covers the near road.
         sun.castsShadow = true
-        sun.shadowMode = .deferred
+        sun.shadowMode = .forward
         sun.shadowColor = UIColor(white: 0, alpha: 0.32)
         sun.shadowRadius = 2
         sun.shadowSampleCount = 4
         sun.shadowMapSize = CGSize(width: 2048, height: 2048)
-        sun.maximumShadowDistance = 55
-        sun.shadowCascadeCount = 2
+        sun.maximumShadowDistance = 45
+        sun.shadowCascadeCount = 1
         sunNode.light = sun
         sunNode.eulerAngles = SCNVector3(-0.95, 0.55, 0)
         scene.rootNode.addChildNode(sunNode)
@@ -742,6 +746,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         road.position = SCNVector3(0, 0.01, -segmentLength / 2)
         node.addChildNode(road)
         node.addChildNode(scenery.dressing(for: world, length: segmentLength, seed: genSeed))
+        // The road and roadside still receive shadows but never cast them. Casting
+        // means drawing all of a slice's buildings again into the shadow map.
+        node.enumerateHierarchy { child, _ in child.castsShadow = false }
         applyLook(to: node)
         let seg = Segment(node: node, world: world)
         seg.inUse = true
@@ -1235,6 +1242,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Front edge at z = 0, stretching back to z = -length. The roof is the ride.
     private func makeCatTree(length: Float) -> SCNNode {
         let root = SCNNode()
+        // The roof, base, posts, and cubbies are built as separate pieces, then
+        // merged into one mesh below, so SceneKit draws the whole frame in about
+        // five calls (one per material) instead of one per piece (about 40).
+        let parts = SCNNode()
         let width: CGFloat = 1.75
         let L = CGFloat(length)
 
@@ -1248,14 +1259,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         roof.materials = [carpetSide, sideLong, carpetSide, sideLong, topTex, carpetSide]
         let roofNode = SCNNode(geometry: roof)
         roofNode.position = SCNVector3(0, roofY - 0.13, -length / 2)
-        root.addChildNode(roofNode)
+        parts.addChildNode(roofNode)
 
         // Base plate on the ground.
         let base = SCNBox(width: width, height: 0.16, length: L, chamferRadius: 0.05)
         base.materials = [carpetSide, sideLong, carpetSide, sideLong, carpetSide, carpetSide]
         let baseNode = SCNNode(geometry: base)
         baseNode.position = SCNVector3(0, 0.08, -length / 2)
-        root.addChildNode(baseNode)
+        parts.addChildNode(baseNode)
 
         // Sisal posts down both sides.
         let postHeight = CGFloat(roofY - 0.3)
@@ -1269,7 +1280,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             for x: Float in [-0.72, 0.72] {
                 let p = SCNNode(geometry: post)
                 p.position = SCNVector3(x, 0.16 + Float(postHeight) / 2, z)
-                root.addChildNode(p)
+                parts.addChildNode(p)
             }
         }
 
@@ -1285,12 +1296,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let z = -0.35 - (Float(i) + 0.5) * (length - 0.7) / Float(bays)
             let c = SCNNode(geometry: cubby)
             c.position = SCNVector3(0, 0.16 + 0.425, z)
-            root.addChildNode(c)
+            parts.addChildNode(c)
             let h = SCNNode(geometry: hole)
             h.eulerAngles.x = .pi / 2
             h.position = SCNVector3(0, -0.05, 0.66)
             c.addChildNode(h)
         }
+        root.addChildNode(parts.flattenedClone())
 
         // A pom-pom toy swinging off the front corner, like the 2D art.
         let string = SCNCylinder(radius: 0.012, height: 0.55)
