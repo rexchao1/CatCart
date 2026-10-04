@@ -1307,11 +1307,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             .rotateBy(x: 0, y: 0, z: tilt >= 0 ? 0.9 : -0.9, duration: 0.25),
             .sequence([.moveBy(x: 0, y: 0.5, z: 0, duration: 0.12), .moveBy(x: 0, y: -0.5, z: 0, duration: 0.18)])
         ]), forKey: "tip")
-        if meters > bestMeters {
+        let newBest = meters > bestMeters
+        if newBest {
             bestMeters = meters
             UserDefaults.standard.set(Double(bestMeters), forKey: Self.bestKey)
         }
-        hud.showDead(meters: Int(meters), food: food, best: Int(bestMeters))
+        hud.showDead(meters: Int(meters), food: food, best: Int(bestMeters), newBest: newBest)
     }
 
     private func shakeCamera() {

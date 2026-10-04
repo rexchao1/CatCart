@@ -73,7 +73,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: distance in meters, food count. The home screen looks at her face from the front: big white "Cat Cart" title, a one-line hint, a paw "Tap to play" button, and the best distance. Tapping swoops the camera around behind her and the run starts. Death sits on a rounded panel with a paw button, and tapping it runs again without going home. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: distance in meters, food count. The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best distance. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, meters and food as two big numbers, the best distance, and a gold "New best!" sticker when she beats it. A "Dash again" paw button sits under it, and tapping runs again without going home. The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
