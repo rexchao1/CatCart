@@ -42,7 +42,7 @@ After steps 3 and 4, same simulator, side by side with the step 2 build, 9 stats
 | House, start of run | ~420 | ~285 | ~730K | ~390K |
 | City, `CATCART_TIME=90` | ~555 | ~340 | ~565K | ~350K |
 
-Waves are random, so single samples swing by 150 either way; the averages are what count. Still zero hitches in house and hard farm. Home screen and all four worlds look the same as before in screenshots, including the cat tree and the shadow under the cart.
+Waves are random, so single samples swing by 150 either way; the averages are what count. Still zero hitches in house and hard farm. Home screen, city, jungle, and house look the same as before in side-by-side screenshots, including the cat tree and the shadow under the cart. Farm was only checked after, and looks normal.
 
 Model weights at the start: kitten 23K triangles in 8 parts, coyote 24K in 30 animated parts, food can 6K in 8 parts, road slice 11K to 28K. If the phone still struggles after steps 2 to 4, the next lever is lighter coyote and food exports (a far-away version with fewer triangles).
 
