@@ -265,6 +265,37 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private lazy var puffImage: UIImage = UIImage(named: "puffDot") ?? Self.drawPuff()
 
+    /// One sky picture per world, loaded up front so driving into a new world
+    /// swaps a ready material instead of decoding a picture mid-run.
+    private lazy var skyMaterials: [WorldKind: SCNMaterial] = {
+        var out: [WorldKind: SCNMaterial] = [:]
+        for world in WorldKind.allCases {
+            let m = SCNMaterial()
+            m.diffuse.contents = UIImage(named: look(world).sky) ?? UIColor(look(world).fog)
+            m.lightingModel = .constant
+            m.readsFromDepthBuffer = false
+            m.writesToDepthBuffer = false
+            out[world] = m
+        }
+        return out
+    }()
+
+    /// A landing or food puff emitter, reused in turn instead of built per puff.
+    private final class Puff {
+        let node: SCNNode
+        let system: SCNParticleSystem
+        /// Seconds of emission left. 0 means silent.
+        var left: Float = 0
+
+        init(node: SCNNode, system: SCNParticleSystem) {
+            self.node = node
+            self.system = system
+        }
+    }
+
+    private var puffs: [Puff] = []
+    private var nextPuff = 0
+
     // MARK: - Game state
 
     private var state: State = .ready
@@ -309,6 +340,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let e2ePilot = ProcessInfo.processInfo.environment["CATCART_PILOT"] == "1"
     /// Test-only: CATCART_TIME=120 starts each run that many seconds into the difficulty ramp.
     private let e2eStartTime = Float(ProcessInfo.processInfo.environment["CATCART_TIME"] ?? "") ?? 0
+    /// Test-only: CATCART_PERF=1 prints frame times and every hitch.
+    private var frameLog = FrameLog(enabled: ProcessInfo.processInfo.environment["CATCART_PERF"] == "1")
 
     private var isHighEnough: Bool { height > clearHeight || onPlatform }
     private var floorY: Float { onPlatform ? roofY : 0 }
@@ -331,7 +364,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         buildCamera()
         buildLights()
         buildPlayer()
+        buildPuffs()
         prewarmSegments()
+        prewarmItems()
         resetTrack()
 
         view.game = self
@@ -344,6 +379,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         view.antialiasingMode = .multisampling4X
         view.backgroundColor = UIColor(look(currentPlayerWorld()).fog)
         view.isMultipleTouchEnabled = false
+        prepareForRun(in: view)
 
         hud.showHome(best: Int(bestMeters))
         if e2eAutoRun {
@@ -403,11 +439,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // over A as you drive toward the next world.
         for (node, order) in [(skyA, -100), (skyB, -99)] {
             let plane = SCNPlane(width: 1, height: 1)
-            let m = SCNMaterial()
-            m.lightingModel = .constant
-            m.readsFromDepthBuffer = false
-            m.writesToDepthBuffer = false
-            plane.materials = [m]
+            plane.materials = [skyMaterials[worldAt(startWorld)]!]
             node.geometry = plane
             node.renderingOrder = order
             node.position = SCNVector3(0, 0, -200)
@@ -636,11 +668,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         if skyAWorld != here {
             skyAWorld = here
-            skyA.geometry?.firstMaterial?.diffuse.contents = UIImage(named: a.sky) ?? UIColor(a.fog)
+            skyA.geometry?.materials = [skyMaterials[here]!]
         }
         if skyBWorld != next {
             skyBWorld = next
-            skyB.geometry?.firstMaterial?.diffuse.contents = UIImage(named: b.sky) ?? UIColor(b.fog)
+            frameLog.note("sky \(next)")
+            skyB.geometry?.materials = [skyMaterials[next]!]
         }
         skyB.opacity = CGFloat(t)
 
@@ -703,6 +736,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return free
         }
         genSeed += 1
+        frameLog.note("built \(world) slice")
         let node = SCNNode()
         let road = SCNNode(geometry: groundPlane(width: 6, length: CGFloat(segmentLength), material: roadMaterials[world]!))
         road.position = SCNVector3(0, 0.01, -segmentLength / 2)
@@ -715,12 +749,50 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return seg
     }
 
-    /// Builds each world's slices up front so no slice is built mid-run.
+    /// Builds each world's slices up front so no slice is built mid-run. At top
+    /// speed one world is 13 slices long, which can fill the whole road at once,
+    /// so each world gets as many slices as the road holds, plus spares.
     private func prewarmSegments() {
-        let perWorld = Int((trackDepth + roadBehind) / segmentLength) + 2
+        let perWorld = Int(((roadBehind + segmentLength + trackDepth) / segmentLength).rounded(.up)) + 2
         for world in WorldKind.allCases {
             let built = (0..<perWorld).map { _ in takeSegment(world) }
             built.forEach { $0.inUse = false }
+        }
+    }
+
+    /// Fills the coyote, food, and cat tree pools before the first tap. Building
+    /// one mid-run, or drawing a kind of thing for the first time, stalls a frame
+    /// (CATCART_PERF=1 shows 33 to 50 ms hitches right after "built tree24").
+    /// The counts cover two of the busiest waves on the road at once.
+    private func prewarmItems() {
+        func stock(_ key: String, _ count: Int, _ make: () -> SCNNode) {
+            for _ in 0..<count {
+                let node = make()
+                node.name = key
+                itemPool[key, default: []].append(node)
+            }
+        }
+        stock("coyote", 10) { makeCoyote() }
+        stock("food", 16) { makeFood() }
+        for size in Self.treeSizes {
+            stock("tree\(Int(size))", 3) { makeCatTree(length: size) }
+        }
+    }
+
+    /// Has SceneKit upload every pooled model and compile its shaders now, in the
+    /// background, while the home screen shows.
+    private func prepareForRun(in view: SCNView) {
+        var objects: [Any] = Array(itemPool.values.joined())
+        objects += segmentPool.values.joined().map(\.node)
+        objects += Array(skyMaterials.values)
+        let logging = frameLog.enabled
+        let started = Date()
+        view.prepare(objects) { done in
+            // Runs on a background thread, so it only prints.
+            guard logging else { return }
+            print(String(format: "CATCART prepare %@ in %.0f ms", done ? "finished" : "failed",
+                         -started.timeIntervalSinceNow * 1000))
+            fflush(stdout)
         }
     }
 
@@ -743,7 +815,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
         let dt = Float(lastTime == 0 ? 1.0 / 60.0 : min(1.0 / 30.0, time - lastTime))
         lastTime = time
+        frameLog.frame(at: time, runTime: timeAlive)
         handleInput()
+        updatePuffs(dt: dt)
 
         switch state {
         case .running:
@@ -1061,6 +1135,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             itemPool[key] = free
             return node
         }
+        frameLog.note("built \(key)")
         let node = make()
         node.name = key
         return node
@@ -1346,28 +1421,48 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         cameraNode.runAction(shake, forKey: "shake")
     }
 
+    /// Builds the puff emitters once. Each one runs all the time at a birth rate
+    /// of 0, and a puff turns it up for a twentieth of a second.
+    private func buildPuffs() {
+        for _ in 0..<4 {
+            let ps = SCNParticleSystem()
+            ps.particleImage = puffImage
+            ps.birthRate = 0
+            ps.particleLifeSpan = 0.4
+            ps.particleSize = 0.2
+            ps.particleSizeVariation = 0.08
+            ps.particleVelocity = 2.6
+            ps.particleVelocityVariation = 1
+            ps.emittingDirection = SCNVector3(0, 1, 0.3)
+            ps.spreadingAngle = 75
+            ps.acceleration = SCNVector3(0, -3, 3)
+            ps.blendMode = .alpha
+            ps.propertyControllers = [.opacity: Self.fadeOutController()]
+            let holder = SCNNode()
+            holder.addParticleSystem(ps)
+            scene.rootNode.addChildNode(holder)
+            puffs.append(Puff(node: holder, system: ps))
+        }
+    }
+
+    /// Fires the next puff emitter in turn. Four is plenty: a puff lasts under half
+    /// a second, and at most a landing and a can or two happen that close together.
     private func puff(at point: SCNVector3, count: Int, color: UIColor) {
-        let ps = SCNParticleSystem()
-        ps.particleImage = puffImage
-        ps.birthRate = CGFloat(count) * 20
-        ps.emissionDuration = 0.05
-        ps.loops = false
-        ps.particleLifeSpan = 0.4
-        ps.particleSize = 0.2
-        ps.particleSizeVariation = 0.08
-        ps.particleColor = color
-        ps.particleVelocity = 2.6
-        ps.particleVelocityVariation = 1
-        ps.emittingDirection = SCNVector3(0, 1, 0.3)
-        ps.spreadingAngle = 75
-        ps.acceleration = SCNVector3(0, -3, 3)
-        ps.blendMode = .alpha
-        ps.propertyControllers = [.opacity: Self.fadeOutController()]
-        let holder = SCNNode()
-        holder.position = point
-        holder.addParticleSystem(ps)
-        scene.rootNode.addChildNode(holder)
-        holder.runAction(.sequence([.wait(duration: 1), .removeFromParentNode()]))
+        guard !puffs.isEmpty else { return }
+        let p = puffs[nextPuff]
+        nextPuff = (nextPuff + 1) % puffs.count
+        p.node.position = point
+        p.system.particleColor = color
+        p.system.birthRate = CGFloat(count) * 20
+        p.left = 0.05
+    }
+
+    /// Turns each puff back off once its twentieth of a second is up.
+    private func updatePuffs(dt: Float) {
+        for p in puffs where p.left > 0 {
+            p.left -= dt
+            if p.left <= 0 { p.system.birthRate = 0 }
+        }
     }
 
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
@@ -1548,6 +1643,66 @@ extension WorldKind {
         case .house: return UIColor(red: 0.78, green: 0.56, blue: 0.34, alpha: 1)
         case .farm: return UIColor(red: 0.80, green: 0.68, blue: 0.48, alpha: 1)
         }
+    }
+}
+
+/// Test-only frame timer. Every 5 seconds it prints the average and worst frame.
+/// Any frame over 25 ms (a visible stutter at 60 fps) is printed on its own, with
+/// whatever was built or spawned during the frame before it, since that frame's
+/// work is what made it late.
+private struct FrameLog {
+    let enabled: Bool
+    private var last: TimeInterval = 0
+    private var windowStart: TimeInterval = 0
+    private var frames = 0
+    private var total: Double = 0
+    private var worst: Double = 0
+    private var hitches = 0
+    private var events: [String] = []
+
+    init(enabled: Bool) {
+        self.enabled = enabled
+    }
+
+    mutating func note(_ event: String) {
+        guard enabled else { return }
+        events.append(event)
+    }
+
+    mutating func frame(at time: TimeInterval, runTime: Float) {
+        guard enabled else { return }
+        defer {
+            last = time
+            events.removeAll()
+        }
+        guard last > 0 else {
+            windowStart = time
+            return
+        }
+        let ms = (time - last) * 1000
+        frames += 1
+        total += ms
+        worst = max(worst, ms)
+        if ms > 25 {
+            hitches += 1
+            let cause = events.isEmpty ? "" : " after " + events.joined(separator: ", ")
+            emit(String(format: "CATCART hitch %.0f ms at run %.1f s", ms, runTime) + cause)
+        }
+        if time - windowStart >= 5 {
+            emit(String(format: "CATCART frames avg %.1f ms worst %.0f ms hitches %d at run %.1f s",
+                        total / Double(max(frames, 1)), worst, hitches, runTime))
+            windowStart = time
+            frames = 0
+            total = 0
+            worst = 0
+            hitches = 0
+        }
+    }
+
+    /// Flushed right away, so lines survive the app being killed at the end of a test.
+    private func emit(_ line: String) {
+        print(line)
+        fflush(stdout)
     }
 }
 

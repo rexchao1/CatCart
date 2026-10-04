@@ -12,6 +12,8 @@ Plans for multi-step work live in `docs/plans/`. Read `docs/plans/3d-world.md` b
 
 Read `docs/plans/difficulty.md` before changing speed, jump tuning, or obstacle mixes. It explains the difficulty ramp and the fairness rule.
 
+Read `docs/plans/performance.md` before adding models, effects, or anything spawned mid-run. It says what must be built up front and how to measure hitches with `CATCART_PERF=1`.
+
 ## Food and coyote assets
 
 The editable sources are `art/models/food/wet-food.blend` and `art/models/coyote/coyote.blend`. After editing either, run `scripts/build_art.sh`, then `swift scripts/check_game_art.swift` and `scripts/e2e_visual.sh`. The export strips the studio and strand fur and adds the coyote gallop. It never saves over the Blender sources.
