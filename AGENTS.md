@@ -11,3 +11,9 @@ Spare art lives in `art/options`. Rex deletes what he does not want. Live defaul
 Plans for multi-step work live in `docs/plans/`. Read `docs/plans/3d-world.md` before touching the scene, camera, worlds, or art pipeline. It tracks the move to a 3D world.
 
 Read `docs/plans/difficulty.md` before changing speed, jump tuning, or obstacle mixes. It explains the difficulty ramp and the fairness rule.
+
+## Food and coyote assets
+
+The editable sources are `art/models/food/wet-food.blend` and `art/models/coyote/coyote.blend`. After editing either, run `scripts/build_art.sh`, then `swift scripts/check_game_art.swift` and `scripts/e2e_visual.sh`. The export strips the studio and strand fur and adds the coyote gallop. It never saves over the Blender sources.
+
+Xcode builds use the committed `CatCart/Models/wet_food.scn` and `coyote_run.scn`; Blender is not needed for a normal app build.

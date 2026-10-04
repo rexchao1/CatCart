@@ -49,6 +49,7 @@ Check after each step: `scripts/e2e_visual.sh`, screenshots reviewed.
 ## Open
 
 - Not checked on a real iPhone yet: frame rate with shadows on, and how the swipes feel. Simulator only so far.
+- Food and coyote source models integrated on 2026-10-03 with `scripts/build_art.sh`. Food is now a real 3D turquoise can; the coyote uses the saved natural-proportion Blender source with a gallop and snarl.
 - Rex's cat photos are reference only. They stay out of the repo and out of any external service.
 - Coyote clones gallop in step. Staggering them means copying each part's animation with its own `timeOffset` (untested).
 - House rug toned down and cat tree carpet warmed (2026-09-30). New app icon takes in `art/options/icon`.

@@ -4,7 +4,7 @@ Read this before changing look, feel, art, or mechanics. If a request fights thi
 
 Owner: Rex. Player: his mom. The game is a gift, not a store product yet.
 
-Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The world is real 3D in SceneKit. The kitten, her La Croix cart, and the coyotes are 3D models. Food is a 2D picture standing in the world, facing the camera. The HUD is a SpriteKit layer on top.
+Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, one SwiftUI window. The world is real 3D in SceneKit. The kitten, her La Croix cart, coyotes, and wet-food cans are 3D models. The HUD is a SpriteKit layer on top.
 
 ---
 
@@ -50,7 +50,9 @@ Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared
 
 Pots are gone. Do not bring them back unless Rex asks.
 
-Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food (open lid, gravy or jelly, a chicken or salmon picture on the label).
+Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
+
+The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`. Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
 
 ### Cat trees
 
@@ -170,7 +172,7 @@ Defaults in the game today:
 |---|---|
 | Player | 3D kitten from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
-| Food | chicken can |
+| Food | 3D turquoise salmon can (`wet_food.scn`) |
 | Cat tree | cubby tree with a flat roof |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
@@ -190,7 +192,7 @@ This is the live game, not a wish list.
 - Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
 - 3D kitten in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
-- Wet food, single cans and lines of cans, some sitting on tree roofs.
+- 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
@@ -201,7 +203,6 @@ Known gaps against this PRD:
 
 - The kitten has no jump pose; she rides the arc sitting.
 - Coyotes gallop in step with each other.
-- Food is still a flat picture.
 - No sound.
 
 ---

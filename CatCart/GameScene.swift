@@ -14,9 +14,8 @@ import UIKit
 //   sits on the road leaves the screen together. No per-object speed tricks.
 // - A shader bends everything down with distance ("curved world"), so the road
 //   rolls away over the horizon like Subway Surfers. The same shader adds fog.
-// - The cat, coyotes, and food are flat pictures standing in the 3D world
-//   ("billboards"). The cat trees are real 3D boxes, so their roof is obviously
-//   something you can ride.
+// - The cat, coyotes, food cans, and cat trees are real 3D models. The trees
+//   have a flat roof that the cart can ride.
 //
 // SceneKit calls renderer(_:updateAtTime:) once per frame. That's our game loop.
 // It runs on SceneKit's render thread, so touches (main thread) are queued and
@@ -235,12 +234,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return out
     }()
 
-    /// The Blender coyote (Models/coyote_run.scn, from scripts/blender/make_coyote.py).
+    /// The saved Blender coyote, exported with scripts/build_art.sh.
     /// Its gallop is baked into the file and plays on every clone by itself.
     private lazy var coyoteModel: SCNNode? = {
         guard let url = Bundle.main.url(forResource: "coyote_run", withExtension: "scn"),
               let file = try? SCNScene(url: url, options: nil) else { return nil }
         return file.rootNode.childNode(withName: "coyote", recursively: true)
+    }()
+
+    /// Turquoise wet-food can. Its label is embedded in the SceneKit archive.
+    private lazy var foodModel: SCNNode? = {
+        guard let url = Bundle.main.url(forResource: "wet_food", withExtension: "scn"),
+              let file = try? SCNScene(url: url, options: nil) else { return nil }
+        return file.rootNode.childNode(withName: "wet_food", recursively: true)
     }()
 
     private lazy var coyoteFrames: [UIImage] = {
@@ -889,7 +895,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             item.z += dz
             item.node.position.z = item.z
             // Transparent pictures draw far to near so they overlap correctly.
-            if item.kind == .food || item.picture != nil {
+            if item.picture != nil || item.node.childNode(withName: "picture", recursively: false) != nil {
                 item.node.renderingOrder = 1000 + Int(item.z * 4)
                 item.node.childNodes.first?.renderingOrder = 1000 + Int(item.z * 4)
             }
@@ -1071,9 +1077,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if let model = coyoteModel {
             let node = SCNNode()
             let coyote = model.clone()
-            // The model's nose is 0.96 m ahead of its origin. Put the nose on the
-            // item's front edge, which is where contact is measured.
-            coyote.position = SCNVector3(0, 0, -0.96)
+            // The saved model may change size. Keep its nose on the item's
+            // front edge, where contact is measured, using its actual bounds.
+            let bounds = coyote.boundingBox
+            coyote.position = SCNVector3(0, 0, -bounds.max.z)
             node.addChildNode(coyote)
             applyLook(to: node)
             let shadow = shadowNode(width: 1.0, length: 2.2)
@@ -1100,14 +1107,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func makeFood() -> SCNNode {
-        let node = billboard(image: UIImage(named: "wetFood"), width: 1.0)
-        if let pic = node.childNode(withName: "picture", recursively: true) {
-            pic.position.y += 0.3
-            pic.runAction(.repeatForever(.sequence([
+        let node: SCNNode
+        let pickup: SCNNode?
+        if let model = foodModel {
+            node = SCNNode()
+            let can = model.clone()
+            node.addChildNode(can)
+            pickup = can
+        } else {
+            // Keep the existing sprite as a fallback if an asset is missing.
+            node = billboard(image: UIImage(named: "wetFood"), width: 1.0)
+            pickup = node.childNode(withName: "picture", recursively: true)
+        }
+        if let pickup {
+            pickup.position.y += 0.3
+            pickup.runAction(.repeatForever(.sequence([
                 .group([.moveBy(x: 0, y: 0.14, z: 0, duration: 0.45), .rotateBy(x: 0, y: 0, z: 0.08, duration: 0.45)]),
                 .group([.moveBy(x: 0, y: -0.14, z: 0, duration: 0.45), .rotateBy(x: 0, y: 0, z: -0.08, duration: 0.45)])
             ])))
         }
+        // Real meshes need the same road bend and fog as every other object.
+        applyLook(to: node)
         node.addChildNode(shadowNode(width: 0.7, length: 0.55))
         return node
     }

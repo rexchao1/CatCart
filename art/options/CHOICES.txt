@@ -86,7 +86,7 @@ OLD CARTOON KITTEN (live until 2026-10-03)
   food/wet-food-3d/visibility.png      64 px and 32 px checks beside coyote art
   Rebuild: scripts/make_food_label.py, then scripts/blender/make_wet_food.py in Blender.
   Export only the Wet food pickup collection. Preview studio is separate.
-  Source model only; the game still uses its current food sprite.
+  LIVE: exported to CatCart/Models/wet_food.scn by scripts/build_art.sh.
 
 COYOTE BLENDER STUDY
   art/models/coyote/coyote.blend      lean tan coyote, dark saddle and tail tip, amber eyes, bared teeth
@@ -96,4 +96,5 @@ COYOTE BLENDER STUDY
   coyote/blender-study/snarl.png      wider jaw opening from the animation
   Frames 1-30 preview the snarl. Export only Coyote model, not Preview studio.
   Rebuild with scripts/blender/make_coyote_study.py in Blender.
-  Art source only; the game's current galloping coyote is unchanged.
+  LIVE: exported to CatCart/Models/coyote_run.scn with a gallop and snarl by scripts/build_art.sh.
+  coyote/coyote-original.scn          previous game coyote, kept as an option
