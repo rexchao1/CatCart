@@ -141,7 +141,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let clearHeight: Float = 0.7
     /// A swipe down on the ground sinks her into the box this long. Another swipe
     /// down while ducked starts the count again.
-    private let duckTime: Float = 0.8
+    private let duckTime: Float = 0.45
     /// The underside of every low thing. Sitting up, her head reaches about 1.68 m;
     /// ducked, only her eyes and ears show over the rim and she's about 1.25 m.
     private let lowClearance: Float = 1.38
@@ -323,8 +323,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var jumpBuffer: Float = 0
     /// Seconds of duck left. Above 0 she's down in the box.
     private var duckTimer: Float = 0
-    /// Swiped down in the air: she drops fast, then ducks the moment she lands.
-    private var duckQueued = false
     /// True until she has ducked under her first low thing, ever. Until then a
     /// one-line hint shows as low things come.
     private var duckHintNeeded = !UserDefaults.standard.bool(forKey: GameScene.duckedKey)
@@ -366,8 +364,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private var isHighEnough: Bool { height > clearHeight || onPlatform }
     /// Low enough to pass under a low thing: down in the box, near the ground.
-    /// A queued duck counts too, so a fast drop from a jump makes it under.
-    private var isDucked: Bool { (duckTimer > 0 || duckQueued) && height - floorY < 0.3 }
+    private var isDucked: Bool { duckTimer > 0 && height - floorY < 0.3 }
     private var floorY: Float { onPlatform ? roofY : 0 }
 
     // MARK: - Setup
@@ -961,11 +958,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             }
         }
 
-        if duckQueued && !jumping && height - floorY < 0.05 {
-            duckQueued = false
-            startDuck()
-        }
-
         let airborne = height - floorY > 0.15
         if wasAirborne && !airborne && vy <= 0 {
             landSquash = 1
@@ -1102,11 +1094,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 2, spawns: [c(1, 0), c(1, 19), c(1, 38), f(0, 8), f(0, 11), f(2, 27), f(2, 30)]),
         // Three low things is a forced duck, as rare as the three-coyote wall.
         Wave(tier: 2, spawns: [d(0, 0), d(1, 0), d(2, 0)], weight: 0.4),
-        // Jump, duck, jump.
-        Wave(tier: 2, spawns: [c(1, 0), d(1, 19), c(1, 38), f(0, 10), f(2, 28)]),
+        // Jump, duck, jump. A low thing after a coyote gets 24 m (1.4 s), not 19:
+        // a late jump lands with little time left, and ducking needs its own swipe.
+        Wave(tier: 2, spawns: [c(1, 0), d(1, 24), c(1, 43), f(0, 10), f(2, 33)]),
         // Every lane flips: jump or duck now, then the other one.
-        Wave(tier: 2, spawns: [d(0, 0), c(1, 0), d(2, 0), c(0, 19), d(1, 19), c(2, 19)]),
-        Wave(tier: 2, spawns: [t(0, 0, 17), d(1, 0), c(2, 0), d(2, 19)], rotates: false)
+        Wave(tier: 2, spawns: [d(0, 0), c(1, 0), d(2, 0), c(0, 24), d(1, 24), c(2, 24)]),
+        Wave(tier: 2, spawns: [t(0, 0, 17), d(1, 0), c(2, 0), d(2, 24)], rotates: false)
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
@@ -1367,6 +1360,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             h.position = SCNVector3(0, -0.05, 0.66)
             c.addChildNode(h)
         }
+        // The look goes on before merging. A merged mesh starts with no materials
+        // and picks up the pieces' ones later, so applyLook on the merged node
+        // finds nothing, and the tree would float unbent over the far road.
+        applyLook(to: parts)
         root.addChildNode(parts.flattenedClone())
 
         // A pom-pom toy swinging off the front corner, like the 2D art.
@@ -1562,6 +1559,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 parts.addChildNode(box(0.04, 0.12, 0.05, pin, at: SCNVector3(x, lineY - 0.02, -0.19), round: 0.01))
             }
         }
+        // Before merging, like the cat tree, so the merged mesh keeps the bend.
+        applyLook(to: parts)
         root.addChildNode(parts.flattenedClone())
 
         // A soft dark strip on the road under it, like the tree's shadow.
@@ -1648,7 +1647,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         jumping = false
         onPlatform = false
         duckTimer = 0
-        duckQueued = false
         hideDuckHint()
         dust.birthRate = 0
         DispatchQueue.main.async {
@@ -1787,11 +1785,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 if !jump() { jumpBuffer = jumpBufferTime }
             case (.running, .down):
                 jumpBuffer = 0
+                // On the ground it's a duck. In the air it only brings her down.
                 if !jumping && height - floorY < 0.05 {
                     startDuck()
                 } else {
                     slamDown()
-                    duckQueued = true
                 }
             default:
                 break
@@ -1830,7 +1828,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         guard !jumping, height - floorY < 0.1 else { return false }
         // Jumping pops her straight out of a duck.
         duckTimer = 0
-        duckQueued = false
         jumping = true
         vy = jumpSpeed
         haptic(.light)
@@ -1883,8 +1880,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 jump()
             } else if item.kind == .tree && !onPlatform && !jumping && item.z > -6 {
                 jump()
-            } else if item.kind == .low && !isDucked && item.z > -7 {
-                // The same swipe down a finger makes: duck now, or drop and duck.
+            } else if item.kind == .low && !isDucked && item.z > -6 {
+                // The same swipe down a finger makes. In the air it drops her,
+                // and the next frame on the ground it ducks.
                 enqueue(.down)
             }
         }
@@ -1917,7 +1915,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         landSquash = 0
         jumpBuffer = 0
         duckTimer = 0
-        duckQueued = false
         timeAlive = 0
         meters = 0
         food = 0

@@ -107,7 +107,7 @@ Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
 ### Duck
 
-Swipe down on the ground and she ducks into the box for 0.8 s: her body squashes down inside the box, so only her ears, the top of her head, and her tail tip show over the rim. Then she pops back up with a little springy overshoot. Swipe down again while ducked to keep ducking. Swipe down in the air and she drops fast, then ducks the moment she lands. Swipe up while ducked and she pops straight into a jump. Lane changes keep the duck going. Ducking works on a tree roof too, but low things only stand on the ground lanes.
+Swipe down on the ground and she ducks into the box for 0.45 s: her body squashes down inside the box, so only her ears, the top of her head, and her tail tip show over the rim. Then she pops back up with a little springy overshoot. Swipe down again while ducked to keep ducking. Swipe down in the air only brings her down fast; it never ducks (Rex's call, 2026-10-04: the 0.8 s duck lasted too long and the air swipe should just land). Swipe up while ducked and she pops straight into a jump. Lane changes keep the duck going. Ducking works on a tree roof too, but low things only stand on the ground lanes.
 
 A low thing in her lane crashes her unless she is ducked near the ground. Jumping into one is a crash. Ducking does not help against coyotes or a tree front.
 
@@ -133,7 +133,7 @@ Like Subway Surfers: easy to start, harder the longer you last, and still fair a
 - One difficulty ramp drives everything: speed, gaps, the jump, and which obstacle mixes show up.
 - The first 15 s or so are easy mixes only: one coyote, one tree, food lines. Medium mixes (two busy lanes, short slaloms, coyote then tree, and the first low things to duck) join at about 15 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip between jump and duck, the rare three-coyote wall and three-low-thing wall) join at about 40 s. Easy mixes thin out but never vanish.
 - Spacing is in time, not meters. A mix plays out the same at any speed, and the breather between mixes shrinks from 1.75 s to 1.05 s.
-- Fairness rule: every lane of every mix can be survived by staying in it and jumping or ducking. Two things in one lane are at least about 1.1 s apart. Steering is the easier way through, never the only way. Low things never stand beside the middle of a tree, where a rider stepping off would drop into one.
+- Fairness rule: every lane of every mix can be survived by staying in it and jumping or ducking. Two things in one lane are at least about 1.1 s apart, and a low thing after a coyote at least 1.4 s, since a late jump has to land before the duck swipe. Steering is the easier way through, never the only way. Low things never stand beside the middle of a tree, where a rider stepping off would drop into one.
 - Cat trees get longer as speed rises, so a ride lasts about the same time.
 
 ### Coyotes
@@ -160,7 +160,7 @@ Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. 
 |---|---|
 | Swipe left / right | Change lane |
 | Swipe up | Jump |
-| Swipe down | Duck into the box; in the air, land now and duck on landing |
+| Swipe down | On the ground, duck into the box. In the air, land now |
 | Tap on the home screen or death panel | Start a run |
 
 One finger. No on-screen buttons during the run. No tilt steering.
@@ -264,7 +264,7 @@ A look or feel change is done when:
 
 `GameScene.swift` is the game: world, rules, camera, input. `Scenery.swift` builds each world's roadside from the models in `CatCart/Models`. `Hud.swift` is the flat layer on top. `CatCartApp.swift` only hosts it. Pictures and textures live in `Assets.xcassets`. Spare takes live in `art/options`.
 
-Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. When you change art, put extras in the options folder and say which imageset is the live default.
+Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. A mesh merged with `flattenedClone` starts with no materials and picks up its pieces' ones later, so call `applyLook` on the pieces before merging (the cat tree and low things do). Calling it on the merged node finds nothing, and the obstacle floats unbent over the far road until it is close (fixed 2026-10-04). When you change art, put extras in the options folder and say which imageset is the live default.
 
 Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). Pilot without god mode is the fairness check: it only jumps and ducks, never steers, so if it crashes, a mix broke the rule above (the crash prints to the console with the mix number).
 
