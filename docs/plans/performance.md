@@ -35,6 +35,8 @@ Hitches before (simulator, `scripts/perf_run.sh`): 33 to 50 ms stalls in the fir
 
 After step 2: zero frames over 25 ms in 30 s of house and 50 s of hard city. SceneKit's prepare of all pooled models takes 80 to 120 ms in the background on the home screen.
 
+2026-10-05, tall trees and ramps (`pacing-and-trees.md` steps 4 to 6): prepare reads 167 to 216 ms on the build just before them and 174 to 248 ms after, so most of the rise since step 2 came earlier. Pools now hold short trees 11 to 40 m, tall trees 12 to 38 m (4 each), and ramps 8 to 17 m per height (3 each). No hitches after a run's first frames with the new mixes forced back to back.
+
 After steps 3 and 4, same simulator, side by side with the step 2 build, 9 stats-bar samples each:
 
 | Run | Draw calls before | after | Triangles before | after |

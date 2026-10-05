@@ -46,12 +46,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// One thing on the track. `z` is its front edge (the end nearest the cat).
     /// A cat tree also has a length that stretches away from the cat, toward -z.
+    ///
+    /// A cat tree with a ramp is still one item: `z` is the foot of the ramp,
+    /// `length` covers the ramp and the tree, and `rampLength` says how much of
+    /// that is slope. The tree's mesh (`node`) sits `rampLength` further back, and
+    /// the ramp mesh (`ramp`) rides on it as a child. `top(at:)` is the height of
+    /// the surface she rolls on anywhere along it.
     private final class TrackItem {
         let kind: Kind
         let lane: Int
         let node: SCNNode
         var z: Float
         var length: Float = 0
+        /// A cat tree's roof height: 2.0 m short, 3.5 m tall.
+        var roof: Float = 0
+        /// The carpeted slope in front of the tree, 0 for no ramp.
+        var rampLength: Float = 0
+        /// The ramp's mesh, borrowed from its pool while the tree is on the road.
+        var ramp: SCNNode?
         var picture: SCNMaterial?
         var frame = 0
         var frameClock: Float = 0
@@ -60,6 +72,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         /// Already clipped her once (a stumble), so it can't clip her again.
         var hit = false
         var back: Float { z - length }
+        /// Where the mesh sits: a ramped tree's mesh starts where the slope ends.
+        var nodeZ: Float { z - rampLength }
+
+        /// Height of a cat tree's top `depth` meters in from its front: rising
+        /// along the ramp, then flat on the roof.
+        func top(at depth: Float) -> Float {
+            guard rampLength > 0, depth < rampLength else { return roof }
+            return roof * max(0, depth) / rampLength
+        }
+
+        /// Height of the top right where the cat is (z = 0).
+        var topAtCat: Float { top(at: z) }
 
         init(kind: Kind, lane: Int, node: SCNNode, z: Float) {
             self.kind = kind
@@ -102,6 +126,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var high = false
         /// A cat tree's length at 17 m/s. Nil picks 11, 14, or 17.
         var length: Float?
+        /// A tall cat tree (3.5 m roof) instead of a short one (2.0 m).
+        var tall = false
+        /// A carpeted ramp in front of the tree. `ahead` is then the ramp's foot,
+        /// and the tree's front is `rampWritten` meters further on.
+        var ramp = false
     }
 
     /// One obstacle mix. Easy mixes (tier 0) show up from the start, medium (1)
@@ -140,20 +169,46 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Road is kept this far behind her so the home screen, which looks back
     /// at her face, sees a street running off into the fog.
     private let roadBehind: Float = 70
-    private let roofY: Float = 1.5
-    private let jumpPeak: Float = 1.9
+    /// Roof heights of the two cat trees. A jump from the ground (peak 2.6 m) lands
+    /// on a short tree. A tall tree is out of its reach, so its front is a wall:
+    /// you get up there by a ramp, or by jumping from a short roof (peak 4.6 m).
+    private let shortRoof: Float = 2.0
+    private let tallRoof: Float = 3.5
+    /// A ramp is this long at 17 m/s and stretches with speed like a tree, so the
+    /// climb always takes about half a second.
+    private static let rampWritten: Float = 8
+    /// How high a step she can roll up onto with her wheels on something: the low
+    /// end of a ramp from the side, about where the carpet still reads as a curb.
+    /// Higher than this from the side is a bump and a stumble.
+    private let stepUp: Float = 0.5
+    /// In a jump, how far below a tall roof (or the high part of a ramp) she can
+    /// be and still get on: her arc carries her up, or she hops up if she catches
+    /// it low. Only a jump from a short roof gets within this of a tall one. For
+    /// short-tree heights the old, more generous rule holds (see `canReach`).
+    private let highReach: Float = 0.5
+    private let jumpPeak: Float = 2.6
     /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. It always peaks
-    /// at 1.9 m. Takeoff to landing is 0.8 s at the start and quickens to about
-    /// 0.62 s at top speed, so a jump doesn't sail over half the road when it's fast.
+    /// at 2.6 m (Rex, 2026-10-05, was 1.9: "I just want the animation higher").
+    /// Takeoff to landing is 0.8 s at the start and quickens to about 0.62 s at full
+    /// ramp (75 s), so a jump doesn't sail over half the road when it's fast. It
+    /// stays there while speed keeps creeping up after that. Raising the
+    /// peak with the airtime unchanged only makes takeoff faster and gravity
+    /// stronger, so every timing stays the same.
     private var jumpAirtime: Float { 0.8 - 0.18 * ramp }
     private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
     private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
     /// A swipe up this soon before landing is remembered and fires on touchdown.
     private let jumpBufferTime: Float = 0.18
-    /// Above this height a coyote passes under you and a tree front is a landing, not a crash.
-    /// 0.8 m at the start, 1.0 m at top speed: the part of a jump that clears a coyote
-    /// shrinks from about three quarters of the airtime to about two thirds.
-    private var clearHeight: Float { 0.8 + 0.2 * ramp }
+    /// Above this height a coyote passes under you and a short tree's front is a
+    /// landing, not a crash. 1.1 m at the start, 1.37 m at full ramp (was 0.8 and
+    /// 1.0 with the 1.9 m jump; scaled by 2.6 / 1.9 so it plays the same): the part
+    /// of a jump that clears a coyote shrinks from about three quarters of the
+    /// airtime to about two thirds.
+    private var clearHeight: Float { 1.1 + 0.27 * ramp }
+    /// Food hanging in the air sits here, where a jump's arc carries her, and she
+    /// reaches it above `airFoodReach` (2.0 and 1.23 m, scaled with the jump).
+    private let airFoodY: Float = 2.0
+    private let airFoodReach: Float = 1.23
     /// A coyote's body, nose to haunches, for contact. The model is 1.9 m with its
     /// tail; the tail doesn't count.
     private let coyoteLength: Float = 1.5
@@ -251,6 +306,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let fillNode = SCNNode()
     private var catShadow: SCNNode!
     private var dust: SCNParticleSystem!
+    /// Where the wheel dust comes from. It rides up with her onto a roof.
+    private let dustNode = SCNNode()
     /// The green spray bottle that chases her after a stumble.
     private let bottle = SCNNode()
 
@@ -352,7 +409,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var height: Float = 0
     private var vy: Float = 0
     private var wasAirborne = false
-    private var onPlatform = false
+    /// The cat tree she's riding (its roof, or its ramp), or nil on the road.
+    private var platform: TrackItem?
+    private var onPlatform: Bool { platform != nil }
+    /// Nose-up lean while she rolls up a ramp, in radians.
+    private var pitch: Float = 0
     private var cameraLift: Float = 0
     private var landSquash: Float = 0
     private var jumpBuffer: Float = 0
@@ -405,13 +466,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let e2eStartTime = Float(ProcessInfo.processInfo.environment["CATCART_TIME"] ?? "") ?? 0
     /// Test-only: CATCART_WAVE=29 plays only that obstacle mix (its index in `waves`).
     private let e2eWave = Int(ProcessInfo.processInfo.environment["CATCART_WAVE"] ?? "")
+    /// Test-only: with CATCART_SWIPES set, every move and stumble prints a line with
+    /// the run time, her lane and height, and the top of what she's riding, so a
+    /// scripted run can be read without guessing from screenshots.
+    private let e2eSwipes = ProcessInfo.processInfo.environment["CATCART_SWIPES"] != nil
+
+    private func testLog(_ what: String) {
+        guard e2eSwipes else { return }
+        print(String(format: "CATCART %@ at run %.2f s lane %d height %.2f floor %.2f", what, timeAlive, lane, height, floorY))
+        fflush(stdout)
+    }
     /// Test-only: CATCART_PERF=1 prints frame times and every hitch.
     private var frameLog = FrameLog(enabled: ProcessInfo.processInfo.environment["CATCART_PERF"] == "1")
 
-    private var isHighEnough: Bool { height > clearHeight || onPlatform }
+    /// High enough that a coyote passes under her. A tree roof is always high
+    /// enough; the low end of a ramp isn't, but coyotes never stand on one.
+    private var isHighEnough: Bool { height > clearHeight }
     /// Low enough to pass under a low thing: down in the box, near the ground.
     private var isDucked: Bool { duckTimer > 0 && height - floorY < 0.3 }
-    private var floorY: Float { onPlatform ? roofY : 0 }
+    /// What she rolls on right now: the road, a tree's roof, or a ramp's slope
+    /// where she is on it.
+    private var floorY: Float { platform?.topAtCat ?? 0 }
 
     // MARK: - Setup
 
@@ -609,7 +684,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         dust.blendMode = .alpha
         dust.isLocal = false
         dust.propertyControllers = [.opacity: Self.fadeOutController()]
-        let dustNode = SCNNode()
         dustNode.position = SCNVector3(0, 0.08, 0.35)
         dustNode.addParticleSystem(dust)
         playerRoot.addChildNode(dustNode)
@@ -863,7 +937,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for size in Self.treeSizes {
             // Four: the staircase mix uses three of one size, and the mix before
             // it can still have one on the road (a 333 ms stall at 60 s with three).
-            stock("tree\(Int(size))", 4) { makeCatTree(length: size) }
+            stock(treeKey(length: size, roof: shortRoof), 4) { makeCatTree(length: size, roof: shortRoof) }
+        }
+        // Tall trees: four per size too, for a wall of tall trees across the road
+        // with the mix before still in view.
+        for size in Self.tallSizes {
+            stock(treeKey(length: size, roof: tallRoof), 4) { makeCatTree(length: size, roof: tallRoof) }
+        }
+        // Ramps hang off the front of a tree and come back to their own pool, so
+        // three of each length and height covers two ramps in a mix plus one
+        // still on the road from the mix before.
+        for size in Self.rampSizes {
+            for roof in [shortRoof, tallRoof] {
+                stock(rampKey(length: size, roof: roof), 3) { makeRamp(length: size, roof: roof) }
+            }
         }
         // The zigzag mix alone has four low things, all in one world, and from
         // 40 s mixes chain with almost no gap.
@@ -961,7 +1048,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         updateCamera(dt: dt)
         updateDuckHint()
 
-        dust.birthRate = height < 0.05 || (onPlatform && height - roofY < 0.05) ? 22 : 0
+        dust.birthRate = height - floorY < 0.05 ? 22 : 0
+        dustNode.position.y = floorY + 0.08
 
         lineClock -= dt
         if lineClock <= 0 {
@@ -975,11 +1063,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func updateCamera(dt: Float) {
         // The camera trails the cat a little: it follows her lane at 60%, and rises
         // when she rides a tree, but it lags so lane changes and landings feel weighty.
+        // It follows a ramp's slope the same way, so the climb is smooth.
         cameraLift += (floorY - cameraLift) * min(1, 4 * dt)
         let goalX = visualX * 0.6
         runCameraX += (goalX - runCameraX) * min(1, 9 * dt)
         let x = runCameraX
-        let y = cameraBase.y + cameraLift * 0.75 + max(0, height - floorY) * 0.12
+        // It rises three quarters of the way up to a short roof, then all the way
+        // with anything higher, so a tall roof is framed like a short one: the
+        // camera stays 2.4 m over her and looks past her head down the road.
+        // Rising less there put her head right over the road ahead. In a jump it
+        // bobs up a little (0.09 per meter, was 0.12 with the 1.9 m jump, so the
+        // camera moves as before and the higher arc shows on screen).
+        let rise = min(cameraLift, shortRoof) * 0.75 + max(0, cameraLift - shortRoof)
+        let y = cameraBase.y + rise + max(0, height - floorY) * 0.09
         cameraNode.position = SCNVector3(x, y, cameraBase.z)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, -tilt * 0.08)
         // A slightly wider view as the run speeds up.
@@ -1000,9 +1096,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         vy -= gravity * dt
         height += vy * dt
         if height < floorY {
+            // Rolling up a ramp, the slope rises under her by up to 0.25 m a frame
+            // (a tall ramp climbs 3.5 m in half a second), so she's carried up
+            // with it. Coming down from a jump, only a near miss snaps.
+            let snap: Float = jumping ? 0.1 : 0.3
             if vy > 0 {
                 // Still rising past the lip of a tree roof: keep the arc.
-            } else if floorY - height < 0.1 || !onPlatform {
+            } else if floorY - height < snap || !onPlatform {
                 height = floorY
                 vy = 0
                 jumping = false
@@ -1032,12 +1132,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let bump = height - floorY < 0.02 ? sin(timeAlive * 38) * 0.018 : 0
         catNode.position.y = height + bump
 
+        // Nose up while she rolls up a ramp, level again on the roof or in the air.
+        var lean: Float = 0
+        if let p = platform, p.rampLength > 0, p.z < p.rampLength, height - floorY < 0.05 {
+            lean = atan(p.roof / p.rampLength)
+        }
+        pitch += (lean - pitch) * min(1, 14 * dt)
+        catNode.eulerAngles.x = pitch
+
         // The shadow stays on whatever is under her, and shrinks as she rises.
+        // Scaled for the 2.6 m jump, so at the top of a jump it looks as it did at 1.9.
         let lift = max(0, height - floorY)
         catShadow.position.y = floorY + 0.03
-        let s = max(0.45, 1 - lift * 0.22)
+        catShadow.eulerAngles.x = pitch
+        let s = max(0.45, 1 - lift * 0.16)
         catShadow.scale = SCNVector3(s, s, s)
-        catShadow.opacity = CGFloat(max(0.35, 1 - lift * 0.25))
+        catShadow.opacity = CGFloat(max(0.35, 1 - lift * 0.18))
     }
 
     private func updateSteer(dt: Float) {
@@ -1050,12 +1160,38 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         catNode.eulerAngles.z = tilt
     }
 
+    /// Keeps her on the tree she's riding until its back passes, then hands her to
+    /// the next tree in her lane if one is already beside her and she's level with
+    /// or above it, or drops her to the road.
     private func updateRide() {
-        guard onPlatform else { return }
-        let stillOn = items.contains { $0.kind == .tree && $0.lane == lane && overlapsCat($0) }
-        if !stillOn {
-            onPlatform = false
+        guard let current = platform else { return }
+        if current.lane == lane && overlapsCat(current) { return }
+        platform = items
+            .filter { $0.kind == .tree && $0.lane == lane && overlapsCat($0) && canReach($0) }
+            .max { $0.topAtCat < $1.topAtCat }
+    }
+
+    /// Can she get onto this tree right where she is, from the front or the side?
+    /// - Rolling (wheels on the road, a roof, or a ramp): only a step up of
+    ///   `stepUp` (0.5 m), so the low end of a ramp from the side, never a roof.
+    /// - In a jump, at short-tree heights (up to 2.0 m): above `clearHeight`, the
+    ///   same height that clears a coyote. That's the old rule: the arc carries
+    ///   her onto the roof, or she hops up if she catches it low.
+    /// - In a jump, higher than that (a tall roof): within `highReach` (0.5 m) of
+    ///   it, which only a jump from a short roof reaches.
+    /// Level with it or above, she's always fine; stepping down is just a drop.
+    private func canReach(_ tree: TrackItem) -> Bool {
+        let top = tree.topAtCat
+        let airborne = jumping || height - floorY > 0.15
+        let reach: Float
+        if !airborne {
+            reach = stepUp
+        } else if top <= shortRoof + 0.01 {
+            reach = max(stepUp, top - clearHeight)
+        } else {
+            reach = highReach
         }
+        return height > top - reach
     }
 
     private func overlapsCat(_ item: TrackItem) -> Bool {
@@ -1065,7 +1201,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func moveItems(dz: Float, dt: Float) {
         for item in items {
             item.z += dz
-            item.node.position.z = item.z
+            item.node.position.z = item.nodeZ
             // Transparent pictures draw far to near so they overlap correctly.
             if item.picture != nil || item.node.childNode(withName: "picture", recursively: false) != nil {
                 item.node.renderingOrder = 1000 + Int(item.z * 4)
@@ -1106,8 +1242,33 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private static func roof(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead, onRoof: true) }
     /// Food in the air: you only get it by jumping.
     private static func air(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead, high: true) }
+    // Cat trees. Every tree's `ahead` is its front: where she first meets it.
+    //   t(1, 0, 14)           short tree, roof 2.0 m: jump on from the road.
+    //   tall(1, 0, 14)        tall tree, roof 3.5 m: a wall from the road.
+    //   ramp(tall(1, 0, 14))  an 8 m ramp, then the tree. `ahead` is the ramp's
+    //                         foot, so the tree's front is at 8 and its back at 22.
+    //   ramp(t(1, 0, 14))     the same onto a short tree.
+    // Length is at 17 m/s; nil picks 11, 14, or 17. Trees and ramps stretch fully
+    // with speed and everything written behind a tree's back moves back with it.
+    // Things beside a tree only stretch with the square root, like the rest of a
+    // mix, so at speed they slide toward the tree's front (and onto its ramp).
+    // Roof food (`roof`) keeps its spot along the tree it was written on, ramp
+    // included, and sits on the surface there.
+    // Fairness: a tall tree with no ramp and no short tree right before it in its
+    // lane is a blocked lane. Low things never stand beside the middle of a tree.
     private static func t(_ lane: Int, _ ahead: Float, _ length: Float? = nil) -> Spawn {
         Spawn(kind: .tree, lane: lane, ahead: ahead, length: length)
+    }
+    private static func tall(_ lane: Int, _ ahead: Float, _ length: Float? = nil) -> Spawn {
+        Spawn(kind: .tree, lane: lane, ahead: ahead, length: length, tall: true)
+    }
+    /// A ramp in front of a tree: roll onto its foot in its lane and she rides up
+    /// onto the roof with no jump. From the side she can only get on near the
+    /// bottom (under 0.5 m); higher up the side is a bump.
+    private static func ramp(_ tree: Spawn) -> Spawn {
+        var out = tree
+        out.ramp = true
+        return out
     }
     private static func d(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .low, lane: lane, ahead: ahead) }
     /// A blocked lane: a coyote prowling under a low thing. Jump and you hit the
@@ -1189,12 +1350,46 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // block and the middle has the coyote: jump, land, steer in, jump again.
         Wave(tier: 2, spawns: [c(0, 0)] + b(1, 0) + [c(2, 0)] + b(0, 26) + [c(1, 26)] + b(2, 26), rotates: false),
         // A blocked lane walks across the road with a coyote beside it.
-        Wave(tier: 2, spawns: b(0, 0) + [c(1, 0)] + b(1, 22) + [c(2, 22)] + b(2, 44) + [c(0, 44)], rotates: false)
+        Wave(tier: 2, spawns: b(0, 0) + [c(1, 0)] + b(1, 22) + [c(2, 22)] + b(2, 44) + [c(0, 44)], rotates: false),
+
+        // provisional, step 7 rewrites. Tall trees and ramps, kept in the middle
+        // lane (rotates: false) so CATCART_WAVE runs are easy to script.
+        // Ramp up: roll up onto a tall tree in the middle; coyotes on both sides.
+        // The easy way through is up. Side lanes are two coyotes, 19 m apart.
+        Wave(tier: 1, spawns: [ramp(tall(1, 0, 14)), c(0, 6), c(2, 6), c(0, 25), c(2, 25),
+                               roof(1, 13), roof(1, 16), roof(1, 19)], rotates: false),
+        // Staircase up: a short tree, then a tall one right behind it. Jump on,
+        // then jump from the short roof up to the tall one (or crash into its
+        // front). The sides are two coyotes each.
+        Wave(tier: 2, spawns: [t(1, 0, 14), tall(1, 14, 14), c(0, 6), c(2, 6), c(0, 25), c(2, 25),
+                               roof(1, 18), roof(1, 21), roof(1, 24)], rotates: false),
+        // Step down: a ramp up a tall tree, a short tree beside it on the right.
+        // Step right off the tall roof and drop onto the short one, where the food
+        // is. Or jump onto the short tree from the road, or jump the left coyotes.
+        Wave(tier: 2, spawns: [ramp(tall(1, 0, 14)), t(2, 8, 20), c(0, 6), c(0, 25),
+                               roof(2, 24), roof(2, 27)], rotates: false)
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
-    /// so the tree pool stays small.
-    private static let treeSizes: [Float] = [11, 14, 17, 20, 24, 28, 32]
+    /// so the tree pool stays small. Tall trees and ramps get fewer sizes: they're
+    /// rarer, and each size costs three or four meshes built before the run.
+    /// They reach about 38 m: a 17 m tree at 38 m/s, the most speed creeps up to
+    /// after full ramp. A ramp at 38 m/s wants 17.9 m and gets 17.
+    private static let treeSizes: [Float] = [11, 14, 17, 20, 24, 28, 32, 36, 40]
+    private static let tallSizes: [Float] = [12, 16, 21, 26, 32, 38]
+    private static let rampSizes: [Float] = [8, 11, 14, 17]
+
+    private static func snap(_ length: Float, to sizes: [Float]) -> Float {
+        sizes.min { abs($0 - length) < abs($1 - length) } ?? length
+    }
+
+    /// Pool names: "tree14" for a short tree, "tall16", "ramp11-tall".
+    private func treeKey(length: Float, roof: Float) -> String {
+        (roof > shortRoof ? "tall" : "tree") + "\(Int(length))"
+    }
+    private func rampKey(length: Float, roof: Float) -> String {
+        "ramp\(Int(length))-" + (roof > shortRoof ? "tall" : "short")
+    }
 
     /// Seconds into a run when medium and hard mixes join.
     private let mediumFrom: Float = 8
@@ -1231,20 +1426,35 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return mirror ? 2 - turned : turned
         }
         let scale = spacingScale
-        // Trees stretch with speed more than the rest of the mix does. Anything
-        // written behind a tree's end moves back by that extra length, so the road
-        // after a ride keeps its timing.
-        struct TreePlan { let spawn: Spawn; let lane: Int; let written: Float; let length: Float }
+        // Trees (and their ramps) stretch with speed more than the rest of the mix
+        // does. Anything written behind a tree's end moves back by that extra
+        // length, so the road after a ride keeps its timing.
+        struct TreePlan {
+            let spawn: Spawn
+            let lane: Int
+            let roof: Float
+            /// Tree and ramp lengths as written (17 m/s) and as built (stretched, snapped).
+            let written: Float
+            let length: Float
+            let rampWritten: Float
+            let rampLength: Float
+            var writtenTotal: Float { rampWritten + written }
+            var total: Float { rampLength + length }
+        }
         let trees: [TreePlan] = wave.spawns.filter { $0.kind == .tree }.map { spawn in
             let written: Float = spawn.length ?? [11, 14, 17].randomElement() ?? 14
-            let stretched = written * treeScale
-            let length = Self.treeSizes.min { abs($0 - stretched) < abs($1 - stretched) } ?? written
-            return TreePlan(spawn: spawn, lane: place(spawn.lane), written: written, length: length)
+            let rampWritten: Float = spawn.ramp ? Self.rampWritten : 0
+            return TreePlan(
+                spawn: spawn, lane: place(spawn.lane), roof: spawn.tall ? tallRoof : shortRoof,
+                written: written,
+                length: Self.snap(written * treeScale, to: spawn.tall ? Self.tallSizes : Self.treeSizes),
+                rampWritten: rampWritten,
+                rampLength: spawn.ramp ? Self.snap(rampWritten * treeScale, to: Self.rampSizes) : 0)
         }
         func ahead(_ spawn: Spawn) -> Float {
             var out = spawn.ahead * scale
-            for tree in trees where tree.spawn.ahead + tree.written <= spawn.ahead + 0.01 {
-                out += max(0, tree.length - tree.written * scale)
+            for tree in trees where tree.spawn.ahead + tree.writtenTotal <= spawn.ahead + 0.01 {
+                out += max(0, tree.total - tree.writtenTotal * scale)
             }
             return out
         }
@@ -1264,22 +1474,34 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         var reach: Float = 0
-        var treeEnd: [Int: Float] = [:]
+        var placed: [(plan: TreePlan, start: Float, item: TrackItem)] = []
         for tree in trees {
             let start = ahead(tree.spawn) + shift
-            treeEnd[tree.lane] = start + tree.length
-            addItem(.tree, lane: tree.lane, z: -base - start, length: tree.length)
-            reach = max(reach, start + tree.length)
+            let item = addItem(.tree, lane: tree.lane, z: -base - start, length: tree.total,
+                               roof: tree.roof, rampLength: tree.rampLength)
+            placed.append((tree, start, item))
+            reach = max(reach, start + tree.total)
         }
         for spawn in wave.spawns where spawn.kind != .tree {
             let lane = place(spawn.lane)
-            let onRoof = spawn.onRoof && treeEnd[lane] != nil
             var at = ahead(spawn) + shift
-            if onRoof, let end = treeEnd[lane] {
+            var y: Float = 0
+            // Roof food rides on the tree it was written on: the last one in its lane
+            // that starts at or before it. It keeps its spot along that tree (on the
+            // ramp it stretches with the ramp) and sits on the surface there.
+            let host = placed.filter { $0.plan.lane == lane && $0.plan.spawn.ahead <= spawn.ahead + 0.01 }
+                .max { $0.plan.spawn.ahead < $1.plan.spawn.ahead }
+            if spawn.onRoof, let host {
+                let written = spawn.ahead - host.plan.spawn.ahead
+                var depth = written < host.plan.rampWritten
+                    ? written * host.plan.rampLength / host.plan.rampWritten
+                    : host.plan.rampLength + (written - host.plan.rampWritten) * scale
                 // Snapping the tree length can shorten it a little. Keep roof food on the roof.
-                at = min(at, end - 1.5)
+                depth = min(depth, host.plan.total - 1.5)
+                at = host.start + depth
+                y = host.item.top(at: depth) + 0.05
             }
-            addItem(spawn.kind, lane: lane, z: -base - at, onRoof: onRoof, high: spawn.high)
+            addItem(spawn.kind, lane: lane, z: -base - at, high: spawn.high, y: y)
             reach = max(reach, at)
         }
         // A short beat after the mix, in seconds so it means the same at any speed:
@@ -1289,9 +1511,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return reach + runSpeed() * gapSeconds
     }
 
-    private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, onRoof: Bool = false, high: Bool = false) {
+    /// Puts one thing on the road. For a cat tree, `length` includes its ramp.
+    /// `y` lifts food onto a roof.
+    @discardableResult
+    private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, roof: Float = 0,
+                         rampLength: Float = 0, high: Bool = false, y: Float = 0) -> TrackItem {
         let node: SCNNode
         var picture: SCNMaterial?
+        var rampNode: SCNNode?
         switch kind {
         case .coyote:
             node = takeNode("coyote") { self.makeCoyote() }
@@ -1301,7 +1528,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .food:
             node = takeNode("food") { self.makeFood() }
         case .tree:
-            node = takeNode("tree\(Int(length))") { self.makeCatTree(length: length) }
+            let treeLength = length - rampLength
+            node = takeNode(treeKey(length: treeLength, roof: roof)) { self.makeCatTree(length: treeLength, roof: roof) }
+            if rampLength > 0 {
+                // The ramp hangs off the tree's front, so it moves with it.
+                let r = takeNode(rampKey(length: rampLength, roof: roof)) { self.makeRamp(length: rampLength, roof: roof) }
+                node.addChildNode(r)
+                rampNode = r
+            }
         case .low:
             // A scaffold in the city, a log in the jungle: whichever world the
             // road is in where it appears, far ahead.
@@ -1314,14 +1548,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .coyote: item.length = coyoteLength
         default: item.length = length
         }
+        item.roof = roof
+        item.rampLength = rampLength
+        item.ramp = rampNode
         item.picture = picture
         item.frame = Int.random(in: 0..<4)
         item.high = high
         // Food in the air hangs where a jump's arc carries her, and drops its shadow.
         node.childNode(withName: "shadow", recursively: false)?.isHidden = high
-        node.position = SCNVector3(laneX(lane), onRoof ? roofY + 0.05 : high ? 1.45 : 0, z)
+        node.position = SCNVector3(laneX(lane), high ? airFoodY : y, item.nodeZ)
         scene.rootNode.addChildNode(node)
         items.append(item)
+        return item
     }
 
     private func takeNode(_ key: String, make: () -> SCNNode) -> SCNNode {
@@ -1339,6 +1577,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         item.node.removeFromParentNode()
         if let key = item.node.name {
             itemPool[key, default: []].append(item.node)
+        }
+        // A ramp goes back to its own pool, ready for any tree of its height.
+        if let ramp = item.ramp {
+            ramp.removeFromParentNode()
+            if let key = ramp.name {
+                itemPool[key, default: []].append(ramp)
+            }
+            item.ramp = nil
         }
     }
 
@@ -1429,7 +1675,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// A long carpeted cat tree that fills one lane like a Subway Surfers train.
     /// Front edge at z = 0, stretching back to z = -length. The roof is the ride.
-    private func makeCatTree(length: Float) -> SCNNode {
+    /// A short tree (roof 2.0 m) has one story of cubbies; a tall one (3.5 m) has
+    /// a carpeted shelf halfway up and a second story of cubbies on it.
+    private func makeCatTree(length: Float, roof roofTop: Float) -> SCNNode {
         let root = SCNNode()
         // The roof, base, posts, and cubbies are built as separate pieces, then
         // merged into one mesh below, so SceneKit draws the whole frame in about
@@ -1437,6 +1685,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let parts = SCNNode()
         let width: CGFloat = 1.75
         let L = CGFloat(length)
+        let stories = roofTop > shortRoof + 0.01 ? 2 : 1
 
         let topTex = carpetTop.copy() as! SCNMaterial
         topTex.diffuse.contentsTransform = SCNMatrix4MakeScale(1, Float(L / width), 1)
@@ -1447,7 +1696,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let roof = SCNBox(width: width, height: 0.26, length: L, chamferRadius: 0.1)
         roof.materials = [carpetSide, sideLong, carpetSide, sideLong, topTex, carpetSide]
         let roofNode = SCNNode(geometry: roof)
-        roofNode.position = SCNVector3(0, roofY - 0.13, -length / 2)
+        roofNode.position = SCNVector3(0, roofTop - 0.13, -length / 2)
         parts.addChildNode(roofNode)
 
         // Base plate on the ground.
@@ -1457,8 +1706,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         baseNode.position = SCNVector3(0, 0.08, -length / 2)
         parts.addChildNode(baseNode)
 
-        // Sisal posts down both sides.
-        let postHeight = CGFloat(roofY - 0.3)
+        // Each story is the space from one floor (the base, or the shelf) up to the
+        // next. A tall tree's shelf is a thinner carpet deck the length of the tree.
+        let storyHeight = (roofTop - 0.26 - 0.16) / Float(stories)
+        if stories == 2 {
+            let shelf = SCNBox(width: width - 0.08, height: 0.14, length: L - 0.2, chamferRadius: 0.05)
+            shelf.materials = [carpetSide, sideLong, carpetSide, sideLong, carpetSide, carpetSide]
+            let shelfNode = SCNNode(geometry: shelf)
+            shelfNode.position = SCNVector3(0, 0.16 + storyHeight - 0.07, -length / 2)
+            parts.addChildNode(shelfNode)
+        }
+
+        // Sisal posts down both sides, floor to roof.
+        let postHeight = CGFloat(roofTop - 0.3)
         let post = SCNCylinder(radius: 0.13, height: postHeight)
         let rope = sisal.copy() as! SCNMaterial
         rope.diffuse.contentsTransform = SCNMatrix4MakeScale(2, Float(postHeight) * 1.5, 1)
@@ -1474,22 +1734,31 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         // Cubbies in every other bay, each with a dark round doorway facing the cat.
-        let cubby = SCNBox(width: 1.25, height: 0.85, length: 1.3, chamferRadius: 0.12)
+        // On a tall tree the upper story's cubbies sit in the bays between the
+        // lower ones, so the front shows one low and one high doorway.
+        let cubbyHeight = storyHeight * 0.7
+        let cubby = SCNBox(width: 1.25, height: CGFloat(cubbyHeight), length: 1.3, chamferRadius: 0.12)
         cubby.materials = [carpetSide]
-        let hole = SCNCylinder(radius: 0.28, height: 0.02)
+        let hole = SCNCylinder(radius: CGFloat(min(0.36, cubbyHeight * 0.33)), height: 0.02)
         let holeMat = SCNMaterial()
         holeMat.diffuse.contents = UIColor(red: 0.20, green: 0.13, blue: 0.10, alpha: 1)
         holeMat.lightingModel = .constant
         hole.materials = [holeMat]
-        for i in stride(from: 0, to: bays, by: 2) {
-            let z = -0.35 - (Float(i) + 0.5) * (length - 0.7) / Float(bays)
-            let c = SCNNode(geometry: cubby)
-            c.position = SCNVector3(0, 0.16 + 0.425, z)
-            parts.addChildNode(c)
-            let h = SCNNode(geometry: hole)
-            h.eulerAngles.x = .pi / 2
-            h.position = SCNVector3(0, -0.05, 0.66)
-            c.addChildNode(h)
+        for story in 0..<stories {
+            let floor = 0.16 + Float(story) * storyHeight
+            for i in stride(from: story, to: bays, by: 2) {
+                let z = -0.35 - (Float(i) + 0.5) * (length - 0.7) / Float(bays)
+                let c = SCNNode(geometry: cubby)
+                c.position = SCNVector3(0, floor + cubbyHeight / 2, z)
+                parts.addChildNode(c)
+                // The doorway goes straight on `parts`, not inside the cubby: the
+                // merge kept only its own offset, so as a grandchild it ended up
+                // half sunk in the road in front of the tree.
+                let h = SCNNode(geometry: hole)
+                h.eulerAngles.x = .pi / 2
+                h.position = SCNVector3(0, floor + cubbyHeight / 2 - 0.05, z + 0.66)
+                parts.addChildNode(h)
+            }
         }
         // The look goes on before merging. A merged mesh starts with no materials
         // and picks up the pieces' ones later, so applyLook on the merged node
@@ -1508,7 +1777,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let pom = SCNSphere(radius: 0.14)
         pom.materials = [pomMat]
         let hanger = SCNNode()
-        hanger.position = SCNVector3(0.7, roofY - 0.26, -0.3)
+        hanger.position = SCNVector3(0.7, roofTop - 0.26, -0.3)
         let stringNode = SCNNode(geometry: string)
         stringNode.position = SCNVector3(0, -0.275, 0)
         hanger.addChildNode(stringNode)
@@ -1524,6 +1793,106 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // A soft shadow the length of the tree.
         let shade = SCNNode(geometry: groundPlane(width: width + 0.7, length: L + 0.8, material: shadowMaterial))
         shade.position = SCNVector3(0, 0.025, -length / 2)
+        shade.castsShadow = false
+        root.addChildNode(shade)
+
+        applyLook(to: root)
+        return root
+    }
+
+    // MARK: - Ramp
+
+    /// A carpeted ramp up to a tree's roof: a solid wedge from the road at its foot
+    /// (z = +length) to the roof's height at its top (z = 0), where it meets the
+    /// tree's front. It's added as a child of the tree's node, so it moves with it.
+    /// Sisal rope runs along both top edges so it reads as cat furniture, not a
+    /// road. The wedge is cut into short slices along its length so the
+    /// curved-world bend bends it with the road. Merged into one mesh like a tree.
+    private func makeRamp(length: Float, roof: Float) -> SCNNode {
+        let root = SCNNode()
+        let parts = SCNNode()
+        let w: Float = 1.75
+        let slices = max(4, Int((length / 1.5).rounded()))
+        let slope = (length * length + roof * roof).squareRoot()
+
+        // Points along the slope, top (i = 0) to foot (i = slices).
+        func station(_ i: Int) -> (z: Float, y: Float, along: Float) {
+            let f = Float(i) / Float(slices)
+            return (length * f, roof * (1 - f), slope * f)
+        }
+        var verts: [SCNVector3] = []
+        var normals: [SCNVector3] = []
+        var uvs: [CGPoint] = []
+        var top: [UInt16] = []
+        var sides: [UInt16] = []
+        func add(_ p: SCNVector3, _ n: SCNVector3, _ uv: CGPoint) -> UInt16 {
+            verts.append(p)
+            normals.append(n)
+            uvs.append(uv)
+            return UInt16(verts.count - 1)
+        }
+        // The slope: carpet top, tiled one square per lane width like the roof.
+        let up = simd_normalize(SIMD3<Float>(0, length, roof))
+        let upN = SCNVector3(up.x, up.y, up.z)
+        for i in 0..<slices {
+            let a = station(i), b = station(i + 1)
+            let p0 = add(SCNVector3(-w / 2, a.y, a.z), upN, CGPoint(x: 0, y: CGFloat(a.along / w)))
+            let p1 = add(SCNVector3(w / 2, a.y, a.z), upN, CGPoint(x: 1, y: CGFloat(a.along / w)))
+            let p2 = add(SCNVector3(w / 2, b.y, b.z), upN, CGPoint(x: 1, y: CGFloat(b.along / w)))
+            let p3 = add(SCNVector3(-w / 2, b.y, b.z), upN, CGPoint(x: 0, y: CGFloat(b.along / w)))
+            top += [p0, p3, p2, p0, p2, p1]
+        }
+        // The two sides: carpet, tiled like the sides of a tree's roof.
+        for side: Float in [-1, 1] {
+            let x = side * w / 2
+            let n = SCNVector3(side, 0, 0)
+            for i in 0..<slices {
+                let a = station(i), b = station(i + 1)
+                let lo0 = add(SCNVector3(x, 0, a.z), n, CGPoint(x: CGFloat(a.z / w), y: 0))
+                let hi0 = add(SCNVector3(x, a.y, a.z), n, CGPoint(x: CGFloat(a.z / w), y: CGFloat(a.y / 1.3)))
+                let hi1 = add(SCNVector3(x, b.y, b.z), n, CGPoint(x: CGFloat(b.z / w), y: CGFloat(b.y / 1.3)))
+                let lo1 = add(SCNVector3(x, 0, b.z), n, CGPoint(x: CGFloat(b.z / w), y: 0))
+                // Counter-clockwise seen from outside, so each side faces out.
+                sides += side < 0 ? [lo0, lo1, hi0, hi0, lo1, hi1] : [lo0, hi0, lo1, hi0, hi1, lo1]
+            }
+        }
+        // The back, against the tree's front, for when you see it through the posts.
+        let back = SCNVector3(0, 0, -1)
+        let q0 = add(SCNVector3(-w / 2, 0, 0), back, CGPoint(x: 0, y: 0))
+        let q1 = add(SCNVector3(w / 2, 0, 0), back, CGPoint(x: 1, y: 0))
+        let q2 = add(SCNVector3(w / 2, roof, 0), back, CGPoint(x: 1, y: CGFloat(roof / 1.3)))
+        let q3 = add(SCNVector3(-w / 2, roof, 0), back, CGPoint(x: 0, y: CGFloat(roof / 1.3)))
+        sides += [q0, q3, q1, q1, q3, q2]
+
+        let wedge = SCNGeometry(
+            sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: normals),
+                      SCNGeometrySource(textureCoordinates: uvs)],
+            elements: [SCNGeometryElement(indices: top, primitiveType: .triangles),
+                       SCNGeometryElement(indices: sides, primitiveType: .triangles)])
+        // The plain carpet materials repeat, and the coordinates above already say
+        // how many times, so every ramp shares the same two materials.
+        wedge.materials = [carpetTop, carpetSide]
+        parts.addChildNode(SCNNode(geometry: wedge))
+
+        // Sisal rope along both top edges, from the foot up to the roof.
+        let ropeMat = sisal.copy() as! SCNMaterial
+        ropeMat.diffuse.contentsTransform = SCNMatrix4MakeScale(1, slope * 1.5, 1)
+        let edge = SCNCylinder(radius: 0.08, height: CGFloat(slope))
+        edge.heightSegmentCount = slices
+        edge.materials = [ropeMat, carpetSide, carpetSide]
+        for x in [-w / 2 + 0.05, w / 2 - 0.05] {
+            let e = SCNNode(geometry: edge)
+            // A cylinder stands along y. Tip it forward to lie along the slope.
+            e.eulerAngles.x = atan(roof / length) - .pi / 2
+            e.position = SCNVector3(x, roof / 2 + 0.04, length / 2)
+            parts.addChildNode(e)
+        }
+        applyLook(to: parts)
+        root.addChildNode(parts.flattenedClone())
+
+        // A soft shadow on the road under it.
+        let shade = SCNNode(geometry: groundPlane(width: CGFloat(w) + 0.5, length: CGFloat(length) + 0.4, material: shadowMaterial))
+        shade.position = SCNVector3(0, 0.025, length / 2)
         shade.castsShadow = false
         root.addChildNode(shade)
 
@@ -1779,6 +2148,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// one while it's still chasing and she's caught.
     private func stumble(bounceBack: Bool) {
         guard stumbleGrace <= 0 else { return }
+        testLog("stumble")
         stumbleGrace = 0.4
         if bounceBack {
             lane = bodyLane
@@ -1862,7 +2232,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             if item.kind == .food {
                 guard item.lane == lane, prevZ < 0, item.z >= 0 else { continue }
                 // Food in the air is only reached high in a jump (or from a tree roof).
-                if item.high && height < 0.9 { continue }
+                if item.high && height < airFoodReach { continue }
                 collect(item)
                 continue
             }
@@ -1896,11 +2266,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         guard heading || inside else { return }
         let entered = prevZ < 0 && item.z >= 0
         guard entered || overlapsCat(item) else { return }
-        if onPlatform { return }
-        if isHighEnough {
-            if heading { mountTree() }
+        if item === platform { return }
+        // High enough for this tree (its own roof, or its ramp where she meets
+        // it): get on. Rolling into a ramp's foot counts, so she just drives up.
+        if canReach(item) {
+            if heading { mountTree(item) }
             return
         }
+        // Too low for it: a short tree's front from the road, or a tall tree's
+        // front from the road or a short roof, is a wall.
         guard entered, !item.hit else { return }
         if heading && inside {
             if !e2eGod { crash() }
@@ -1911,11 +2285,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func mountTree() {
-        guard !onPlatform else { return }
+    private func mountTree(_ tree: TrackItem) {
+        guard platform !== tree else { return }
         // She keeps her jump arc and comes down on the roof. The landing puff
-        // and haptic come from updateJump when she touches it.
-        onPlatform = true
+        // and haptic come from updateJump when she touches it. From a higher
+        // roof she just drops onto this one.
+        platform = tree
     }
 
     private func collect(_ item: TrackItem) {
@@ -1934,7 +2309,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         state = .dead
         jumping = false
-        onPlatform = false
+        platform = nil
         duckTimer = 0
         chaseTimer = 0
         hideDuckHint()
@@ -2061,6 +2436,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         inputLock.unlock()
 
         for intent in intents {
+            if state == .running { testLog("\(intent)") }
             switch (state, intent) {
             case (.ready, .tap):
                 startRun()
@@ -2092,23 +2468,23 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func moveLane(_ delta: Int) {
         let next = max(0, min(2, lane + delta))
         guard next != lane else { return }
-        let treeThere = items.contains { $0.kind == .tree && $0.lane == next && overlapsCat($0) }
-        if treeThere && !isHighEnough {
-            // Bumped the side of a cat tree from the ground: bounce back, stay in
-            // lane, and stumble.
+        // The tree beside her in that lane, if any. Its top where she is: a roof,
+        // or partway up a ramp.
+        let beside = items.filter { $0.kind == .tree && $0.lane == next && overlapsCat($0) }
+            .max { $0.topAtCat < $1.topAtCat }
+        if let tree = beside, !canReach(tree) {
+            // Bumped the side of a cat tree that's higher than she can get onto
+            // from here (from the road, a short roof next to a tall one, or a ramp
+            // above its low end): bounce back, stay in lane, and stumble.
             tilt = delta > 0 ? 0.12 : -0.12
             visualX += Float(delta) * 0.35
             haptic(.rigid)
             stumble(bounceBack: false)
             return
         }
-        if onPlatform && !treeThere {
-            // Stepped off the tree into an empty lane: fall.
-            onPlatform = false
-        }
-        if !onPlatform && treeThere && isHighEnough {
-            mountTree()
-        }
+        // Onto the tree next door (dropping down to it if it's lower), or off
+        // into an empty lane, where she falls to the road.
+        platform = beside
         lane = next
         tilt = delta > 0 ? -0.2 : 0.2
         DispatchQueue.main.async {
@@ -2130,7 +2506,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func slamDown() {
         guard jumping || height - floorY > 0.05 else { return }
-        vy = min(vy, -16)
+        // About 1.7 times takeoff speed (was 16 with the 1.9 m jump, scaled to
+        // 22 for the 2.6 m one), so a slam from the top takes as long as before.
+        vy = min(vy, -22)
     }
 
     private func startDuck() {
@@ -2176,7 +2554,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for item in items where item.lane == lane && item.z < 0 && item.z > -9 {
             if item.kind == .coyote && !isHighEnough && !jumping {
                 jump()
-            } else if item.kind == .tree && !onPlatform && !jumping && item.z > -6 {
+            } else if item.kind == .tree && item.rampLength == 0 && !jumping && item.z > -6
+                        && item.roof > floorY + 0.1 && item.roof - floorY < jumpPeak {
+                // Jump up onto a tree that's higher than where she is and within
+                // a jump of it. A ramp she just rolls up. A tall tree from the
+                // road is out of reach, so there's no point jumping at it.
                 jump()
             } else if item.kind == .low && !isDucked && item.z > -6 {
                 // The same swipe down a finger makes. In the air it drops her,
@@ -2212,7 +2594,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         height = 0
         vy = 0
         wasAirborne = false
-        onPlatform = false
+        platform = nil
+        pitch = 0
         tilt = 0
         cameraLift = 0
         landSquash = 0

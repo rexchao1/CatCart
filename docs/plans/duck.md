@@ -58,6 +58,7 @@ Each has an open gap under it down to the road, a shadow strip under it, and its
 - Ducked, she sinks only 0.08 (to the box floor) and her body node squashes to 58% in y. Head and tail sit in holders that scale back, so they keep their shape and their turns don't skew. Her head tops out at about 1.25 m, eyes at the rim.
 - Sinking her whole model deeper looked simpler but pushed her bottom out under the box, visible between the back wheels from the run camera. That's why it squashes instead.
 - Every low thing's underside is `lowClearance` = 1.38 m. Changing the kitten model means rechecking these numbers.
+- The higher jump (2.6 m peak, 2026-10-05) and the 2.0 m short tree roof changed none of these. A low thing is still a crash at any height unless she's ducked, so a jump never goes over one, and low things still stand only on the ground lanes.
 
 ## Result, 2026-10-04 (simulator, iPhone 17 Pro)
 
