@@ -196,7 +196,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// stays there while speed keeps creeping up after that. Raising the
     /// peak with the airtime unchanged only makes takeoff faster and gravity
     /// stronger, so every timing stays the same.
-    private var jumpAirtime: Float { 0.8 - 0.18 * ramp }
+    private var jumpAirtime: Float { 0.9 - 0.12 * ramp }
     private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
     private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
     /// A swipe up this soon before landing is remembered and fires on touchdown.
@@ -223,6 +223,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// The underside of every low thing. Sitting up, her head reaches about 1.68 m;
     /// ducked, only her eyes and ears show over the rim and she's about 1.25 m.
     private let lowClearance: Float = 1.38
+    /// The top of the tallest low thing. A jump that carries her above this goes
+    /// over it (Rex, 2026-10-05); the pieces are built to stay under it.
+    private let lowTop: Float = 2.0
     private let worldSeconds: Float = 10
     /// After a stumble the spray bottle chases her this long. A second stumble
     /// before it gives up and she's caught.
@@ -2225,12 +2228,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let vase = SCNSphere(radius: 0.12)
             vase.materials = [flatMaterial("vase", UIColor(red: 0.45, green: 0.72, blue: 0.85, alpha: 1))]
             let vaseNode = SCNNode(geometry: vase)
-            vaseNode.position = SCNVector3(0.4, top + 0.21, -0.6)
+            vaseNode.position = SCNVector3(0.4, top + 0.17, -0.6)
             parts.addChildNode(vaseNode)
             let bloom = SCNSphere(radius: 0.09)
             bloom.materials = [flatMaterial("bloom", UIColor(red: 1.0, green: 0.78, blue: 0.2, alpha: 1))]
             let bloomNode = SCNNode(geometry: bloom)
-            bloomNode.position = SCNVector3(0.4, top + 0.45, -0.6)
+            bloomNode.position = SCNVector3(0.4, top + 0.36, -0.6)
             parts.addChildNode(bloomNode)
 
         case .farm:
@@ -2238,7 +2241,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let post = flatMaterial("post", UIColor(red: 0.55, green: 0.40, blue: 0.26, alpha: 1))
             let line = flatMaterial("line", UIColor(white: 0.95, alpha: 1))
             let sheet = flatMaterial("sheet", .blue, image: Self.drawSheet())
-            let lineY = u + 0.72
+            let lineY = u + 0.55
             for x in [-px, px] {
                 parts.addChildNode(box(0.12, lineY + 0.14, 0.12, post, at: SCNVector3(x, (lineY + 0.14) / 2, -0.2)))
                 parts.addChildNode(box(0.08, 0.08, 0.5, post, at: SCNVector3(x, lineY + 0.06, -0.2)))
@@ -2446,6 +2449,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 if heading { passedUnder() }
                 continue
             }
+            if item.kind == .low && height > lowTop { continue }
             if heading && inside {
                 if !e2eGod {
                     crash()

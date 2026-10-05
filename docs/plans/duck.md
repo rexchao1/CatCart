@@ -73,3 +73,8 @@ Each has an open gap under it down to the road, a shadow strip under it, and its
 - Swipe down in the air no longer queues a duck; it only lands her. A low thing after a coyote in the same lane now gets 24 m (1.4 s) instead of 19, so a late jump can land and still swipe to duck.
 - Obstacles floated over the far road and dropped onto it as they came close. Cause: the cat tree and low things are merged meshes, and a merged mesh gets its materials after `applyLook` ran, so they had no bend or fog. `applyLook` now runs on the pieces before merging; screenshots show them rising over the hilltop on the road. Coyotes and food were already right.
 - Recheck: pilot with crashes on, 75 s from the start, 70 s at top speed (jungle), and mixes 17, 29 to 32 forced for 30 s each at top speed, no crash. One unexplained 333 ms stall in one top-speed jungle run did not come back in three repeats.
+
+## Round 3, 2026-10-05 (Rex's feedback)
+
+- A jump that carries her above `lowTop` (2.0 m) now clears a low thing, so ducking is not the only answer. Tops of the house vase and farm clothesline were lowered to fit under 2.0 m. Blocked lanes (coyote under a low thing) can be jumped too now.
+- Jump airtime is 0.9 s to 0.78 s (was 0.8 to 0.62) so the jump looks longer. Not yet rerun through the pilot at top speed.
