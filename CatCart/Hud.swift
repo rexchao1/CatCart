@@ -12,10 +12,9 @@ import UIKit
 
 final class Hud: SKScene {
 
-    private var scoreChip: SKSpriteNode!
-    private var foodChip: SKSpriteNode!
-    private var scoreLabel: Readout!
-    private var foodLabel: Readout!
+    /// The score and food pills are ordinary UIKit views on top of the game view,
+    /// not part of this scene. See PillBar for why.
+    weak var pills: PillBar?
     private var panel: SKNode!
     private var home: SKNode!
     private var dim: SKSpriteNode!
@@ -29,10 +28,8 @@ final class Hud: SKScene {
     private var hint: SKNode?
     private var fadedHint: SKNode?
     private var topSafe: CGFloat = 54
-    private var shownScore = -1
-    private var shownFood = -1
-    private var wantScore = 0
-    private var wantFood = 0
+    private var sentScore = -1
+    private var sentFood = -1
     private var wantLine: CGFloat?
 
     private let ink = SKColor(red: 0.16, green: 0.30, blue: 0.46, alpha: 1)
@@ -62,14 +59,6 @@ final class Hud: SKScene {
             linePool.append(line)
         }
 
-        scoreChip = makeChip()
-        foodChip = makeChip()
-        scoreLabel = Readout(color: ink)
-        scoreLabel.zPosition = 11
-        foodLabel = Readout(color: ink)
-        foodLabel.zPosition = 11
-        [scoreChip, foodChip].forEach { addChild($0) }
-        [scoreLabel, foodLabel].forEach { addChild($0) }
 
         // Darkens the world behind the crash panel so the panel pops.
         dim = SKSpriteNode(color: navy, size: size)
@@ -94,21 +83,10 @@ final class Hud: SKScene {
         layout(topSafe: topSafe)
     }
 
-    private func makeChip() -> SKSpriteNode {
-        let chip = SKSpriteNode(imageNamed: "uiHud")
-        chip.size = CGSize(width: 150, height: 40)
-        chip.zPosition = 10
-        return chip
-    }
-
     func layout(topSafe: CGFloat) {
         self.topSafe = max(topSafe, 54)
-        let y = size.height - self.topSafe - 28
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        scoreChip.position = CGPoint(x: size.width * 0.28, y: y)
-        foodChip.position = CGPoint(x: size.width * 0.74, y: y)
-        scoreLabel.position = CGPoint(x: size.width * 0.28 - 28, y: y)
-        foodLabel.position = CGPoint(x: size.width * 0.74 - 28, y: y)
+        pills?.layout(width: size.width, topSafe: self.topSafe)
         panel.position = CGPoint(x: size.width / 2, y: size.height * 0.62)
         flash.size = size
         flash.position = center
@@ -125,71 +103,36 @@ final class Hud: SKScene {
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
-        guard scoreChip != nil else { return }
+        guard panel != nil else { return }
         layout(topSafe: topSafe)
     }
 
     // MARK: - Pills
 
-    // The game calls these every frame from SceneKit's update. They only note the
-    // numbers; the pills change in update(_:) below, SpriteKit's own moment for
-    // changing its nodes.
-    //
-    // Why: a phone screenshot mid-run caught the HUD sprites drawn with each
-    // other's pictures for a frame: the score pill as a plain white box, the
-    // pill picture squeezed onto the first digit, and the digits shifted one
-    // place. The simulator never shows it. Changing sprites from SceneKit's
-    // update, outside SpriteKit's own frame, is our theory for the cause; this
-    // move is the fix for that theory, not yet proven on the phone.
-
+    // The game calls these every frame from SceneKit's update, which runs on its own
+    // thread, so a change is handed to the main thread, and only when it changed.
+    // The score moves about 20 times a second; food only when she picks one up.
     func setScore(_ score: Int) {
-        wantScore = score
+        guard score != sentScore else { return }
+        sentScore = score
+        DispatchQueue.main.async { [weak self] in self?.pills?.setScore(score) }
     }
 
     func setFood(_ food: Int) {
-        wantFood = food
+        guard food != sentFood else { return }
+        sentFood = food
+        DispatchQueue.main.async { [weak self] in self?.pills?.setFood(food) }
     }
 
     override func update(_ currentTime: TimeInterval) {
-        showScore(wantScore)
-        showFood(wantFood)
         if let strength = wantLine {
             wantLine = nil
             spawnLine(strength: strength)
         }
     }
 
-    private func showScore(_ score: Int) {
-        guard score != shownScore else { return }
-        shownScore = score
-        scoreLabel.show(score.formatted())
-    }
-
-    private func showFood(_ food: Int) {
-        guard food != shownFood else { return }
-        let grew = shownFood >= 0 && food > shownFood
-        shownFood = food
-        foodLabel.show("food \(food)")
-        if grew {
-            // A small pulse on the pill instead of score text flying around the screen.
-            foodChip.removeAction(forKey: "pulse")
-            foodChip.setScale(1)
-            foodChip.run(.sequence([
-                .scale(to: 1.12, duration: 0.07),
-                .scale(to: 1.0, duration: 0.12)
-            ]), withKey: "pulse")
-        }
-    }
-
     private func setPillsHidden(_ hidden: Bool) {
-        for node in [scoreChip, foodChip, scoreLabel, foodLabel] as [SKNode] {
-            node.removeAllActions()
-            if hidden {
-                node.alpha = 0
-            } else {
-                node.run(.fadeIn(withDuration: 0.3))
-            }
-        }
+        DispatchQueue.main.async { [weak self] in self?.pills?.setHidden(hidden) }
     }
 
     // MARK: - Home
@@ -648,69 +591,94 @@ final class Hud: SKScene {
     }
 }
 
-/// The numbers in the top pills, built from one picture per character that is
-/// drawn up front. An SKLabelNode draws and uploads a new text picture each time
-/// its text changes, which for the score is nearly every frame. Here a change
-/// only swaps pictures that already exist. Digits share one width so the number
-/// doesn't shift sideways as it counts.
-private final class Readout: SKNode {
-    private static var glyphs: [Character: SKTexture] = [:]
-    private static var digitWidth: CGFloat = 0
-    private var sprites: [SKSpriteNode] = []
-    private var shown = ""
+/// The score and food pills at the top of the screen, as plain UIKit views laid
+/// over the game view instead of sprites in the SpriteKit overlay.
+///
+/// Why: on the phone, the overlay scene sometimes drew the pills with each other's
+/// pictures for a single frame: the score pill as a white box, the pill picture
+/// squeezed onto a digit, digits shifted one place. A 500 screenshot run caught it
+/// 7 times, with a pill built from SKLabelNodes and again with one built from
+/// per-digit sprites, so it is the overlay and not what we put in it. The
+/// simulator never shows it. UIKit draws these itself, with no SpriteKit in the way.
+///
+/// It takes no touches, so swipes still reach the game view underneath.
+final class PillBar: UIView {
+    private let scoreChip = UIImageView(image: UIImage(named: "uiHud"))
+    private let foodChip = UIImageView(image: UIImage(named: "uiHud"))
+    private let scoreLabel = PillBar.makeLabel()
+    private let foodLabel = PillBar.makeLabel()
+    private var shownFood = -1
 
-    init(color: SKColor) {
-        super.init()
-        Self.drawGlyphs(color: color)
-        // Enough sprites for "1,234,567" or "food 1234" up front, so a new digit
-        // mid-run doesn't add a node.
-        addSprites(upTo: 12)
-    }
+    private static let chipSize = CGSize(width: 150, height: 40)
+    private static let ink = UIColor(red: 0.16, green: 0.30, blue: 0.46, alpha: 1)
 
-    private func addSprites(upTo count: Int) {
-        while sprites.count < count {
-            let sprite = SKSpriteNode()
-            sprite.anchorPoint = CGPoint(x: 0, y: 0.5)
-            sprite.isHidden = true
-            addChild(sprite)
-            sprites.append(sprite)
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        for chip in [scoreChip, foodChip] {
+            chip.bounds = CGRect(origin: .zero, size: Self.chipSize)
+            addSubview(chip)
         }
+        addSubview(scoreLabel)
+        addSubview(foodLabel)
+        alpha = 0
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private static func drawGlyphs(color: SKColor) {
-        guard glyphs.isEmpty else { return }
-        let font = UIFont(name: "AvenirNext-Heavy", size: 17) ?? .systemFont(ofSize: 17, weight: .heavy)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-        for ch in "0123456789,.food " {
-            let text = String(ch) as NSString
-            let width = ceil(text.size(withAttributes: attrs).width)
-            let size = CGSize(width: max(width, 1), height: ceil(font.lineHeight))
-            let image = UIGraphicsImageRenderer(size: size).image { _ in
-                text.draw(at: .zero, withAttributes: attrs)
-            }
-            glyphs[ch] = SKTexture(image: image)
-            if ch.isNumber { digitWidth = max(digitWidth, width) }
+    /// AvenirNext-Heavy 17 like before, with digits that all share one width so a
+    /// number doesn't shift sideways as it counts up.
+    private static func makeLabel() -> UILabel {
+        let label = UILabel()
+        let base = UIFont(name: "AvenirNext-Heavy", size: 17) ?? .systemFont(ofSize: 17, weight: .heavy)
+        let fixed = base.fontDescriptor.addingAttributes([
+            .featureSettings: [[
+                UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+            ]]
+        ])
+        label.font = UIFont(descriptor: fixed, size: 17)
+        label.textColor = ink
+        label.textAlignment = .left
+        return label
+    }
+
+    /// The pills sit at 28% and 74% of the width, 28 points under the safe area
+    /// (at least 54), and the text starts 28 points left of each pill's center.
+    func layout(width: CGFloat, topSafe: CGFloat) {
+        frame = CGRect(x: 0, y: 0, width: width, height: topSafe + 60)
+        let y = topSafe + 28
+        for (chip, label, x) in [(scoreChip, scoreLabel, width * 0.28), (foodChip, foodLabel, width * 0.74)] {
+            chip.center = CGPoint(x: x, y: y)
+            label.bounds = CGRect(x: 0, y: 0, width: 100, height: 24)
+            label.center = CGPoint(x: x - 28 + 50, y: y)
         }
     }
 
-    func show(_ text: String) {
-        guard text != shown else { return }
-        shown = text
-        addSprites(upTo: text.count)
-        var x: CGFloat = 0
-        let chars = Array(text)
-        for (i, sprite) in sprites.enumerated() {
-            guard i < chars.count, let texture = Self.glyphs[chars[i]] else {
-                sprite.isHidden = true
-                continue
+    func setScore(_ score: Int) {
+        scoreLabel.text = score.formatted()
+    }
+
+    func setFood(_ food: Int) {
+        let grew = shownFood >= 0 && food > shownFood
+        shownFood = food
+        foodLabel.text = "food \(food)"
+        if grew {
+            // A small pulse on the pill instead of score text flying around the screen.
+            foodChip.layer.removeAllAnimations()
+            foodChip.transform = .identity
+            UIView.animate(withDuration: 0.07, animations: { self.foodChip.transform = CGAffineTransform(scaleX: 1.12, y: 1.12) }) { _ in
+                UIView.animate(withDuration: 0.12) { self.foodChip.transform = .identity }
             }
-            sprite.isHidden = false
-            sprite.texture = texture
-            sprite.size = texture.size()
-            sprite.position = CGPoint(x: x, y: 0)
-            x += chars[i].isNumber ? Self.digitWidth : texture.size().width
+        }
+    }
+
+    func setHidden(_ hidden: Bool) {
+        layer.removeAllAnimations()
+        if hidden {
+            alpha = 0
+        } else {
+            UIView.animate(withDuration: 0.3) { self.alpha = 1 }
         }
     }
 }

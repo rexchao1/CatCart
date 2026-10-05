@@ -566,6 +566,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         view.scene = scene
         view.delegate = self
         view.overlaySKScene = hud
+        let pills = PillBar()
+        view.addSubview(pills)
+        hud.pills = pills
         view.isPlaying = true
         view.rendersContinuously = true
         view.preferredFramesPerSecond = 60
