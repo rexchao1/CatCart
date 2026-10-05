@@ -62,6 +62,15 @@ func makeMaterial(_ name: String) -> SCNMaterial {
         m.emission.contents = nscolor(0x3C2C08)   // keeps the gold warm in shade
         m.specular.contents = NSColor(white: 0.5, alpha: 1)
         m.shininess = 0.6
+    case "kittenCollar": m.diffuse.contents = nscolor(0xFF7A12)
+    case "kittenCollarStitch": m.diffuse.contents = nscolor(0xFFE6B8)
+    case "kittenBell":
+        m.lightingModel = .blinn
+        m.diffuse.contents = nscolor(0xE8B63A)
+        m.emission.contents = nscolor(0x3C2C08)
+        m.specular.contents = NSColor(white: 0.7, alpha: 1)
+        m.shininess = 0.6
+    case "kittenBellSlit": m.diffuse.contents = nscolor(0x3A2A10)
     case "kittenPupil":
         m.lightingModel = .blinn
         m.diffuse.contents = nscolor(0x1A161E)

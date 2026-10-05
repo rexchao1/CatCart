@@ -207,7 +207,7 @@ for side, name in ((-1, "Left ear"), (1, "Right ear")):
 
 # ---------------------------------------------------------------- head
 # Skull plus everything that rides on it and never moves on its own:
-# lids, nose, nostrils, mouth, whiskers.
+# lids, nose, nostrils, mouth, whiskers, and the collar (it leans with her head).
 
 NECK = (0, 0.02, 0.64)
 
@@ -224,6 +224,8 @@ for o in list(scene.objects):
         decimate(o, 120)
         face.append(o)
     elif o.name == "Nose":
+        face.append(o)
+    elif o.name.startswith("Collar"):   # added by scripts/blender/add_collar.py
         face.append(o)
 face += lines
 for o in face:
