@@ -14,6 +14,8 @@ Read `docs/plans/difficulty.md` before changing speed, jump tuning, or obstacle 
 
 Read `docs/plans/challenge.md` before changing obstacle mixes, crashes, stumbles, the score, or speed. It has the fairness rule that replaced "every lane survivable" and tracks the work to make runs a real challenge.
 
+Read `docs/plans/pacing-and-trees.md` before changing the difficulty ramp, cat trees, ramps, or the death panel. It tracks making runs hard sooner, tall trees and ramps, and the pause after dying.
+
 Read `docs/plans/duck.md` before changing ducking or the low things you duck under. It has the heights that make the duck fair.
 
 Read `docs/plans/performance.md` before adding models, effects, or anything spawned mid-run. It says what must be built up front and how to measure hitches with `CATCART_PERF=1`.
