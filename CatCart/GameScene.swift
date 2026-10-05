@@ -136,7 +136,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     /// One obstacle mix. Easy mixes (tier 0) show up from the start, medium (1)
-    /// from 15 s, hard (2) from 40 s.
+    /// from 8 s, hard (2) from 20 s.
     private struct Wave {
         let tier: Int
         let spawns: [Spawn]
@@ -483,14 +483,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let e2eStartTime = Float(ProcessInfo.processInfo.environment["CATCART_TIME"] ?? "") ?? 0
     /// Test-only: CATCART_WAVE=29 plays only that obstacle mix (its index in `waves`).
     private let e2eWave = Int(ProcessInfo.processInfo.environment["CATCART_WAVE"] ?? "")
+    /// Test-only: CATCART_MIRROR=0 or 1 and CATCART_ROT=0...2 fix how a mix is
+    /// flipped and turned, so a CATCART_SWIPES line knows which lane is which.
+    private let e2eMirror = ProcessInfo.processInfo.environment["CATCART_MIRROR"].map { $0 == "1" }
+    private let e2eRot = Int(ProcessInfo.processInfo.environment["CATCART_ROT"] ?? "")
     /// Test-only: with CATCART_SWIPES set, every move and stumble prints a line with
-    /// the run time, her lane and height, and the top of what she's riding, so a
-    /// scripted run can be read without guessing from screenshots.
+    /// the run time, meters run, her lane and height, and the top of what she's
+    /// riding, so a scripted run can be read without guessing from screenshots.
+    /// It also prints each mix as it's placed (where each thing reaches her, in
+    /// meters run), each time she gets on a tree or back on the road, and a crash.
     private let e2eSwipes = ProcessInfo.processInfo.environment["CATCART_SWIPES"] != nil
+    private var loggedPlatform: ObjectIdentifier?
 
     private func testLog(_ what: String) {
         guard e2eSwipes else { return }
-        print(String(format: "CATCART %@ at run %.2f s lane %d height %.2f floor %.2f", what, timeAlive, lane, height, floorY))
+        print(String(format: "CATCART %@ at run %.2f s meters %.1f lane %d height %.2f floor %.2f",
+                     what, timeAlive, meters, lane, height, floorY))
         fflush(stdout)
     }
     /// Test-only: CATCART_PERF=1 prints frame times and every hitch.
@@ -961,15 +969,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // Packed, chained mixes can put well over a dozen coyotes on the road.
         stock("coyote", 22) { makeCoyote() }
         stock("food", 28) { makeFood() }
+        // Short trees: at least four of each size (the staircase uses three of one
+        // size, and the mix before can still have one on the road; a 333 ms stall
+        // at 60 s with three). The sizes a fast run lands on get more: from about
+        // 28 m/s every tree written 11 to 17 m snaps to 24 to 36 m, and with trees
+        // in half the mixes, two-tree mixes back to back, there can be six or
+        // seven of one size on the road. These counts come from simulating the
+        // spawner over 900 two-minute runs: under 1% of runs would need one more.
+        let shortStock: [Float: Int] = [14: 5, 20: 5, 24: 6, 28: 7, 32: 7, 36: 6]
         for size in Self.treeSizes {
-            // Four: the staircase mix uses three of one size, and the mix before
-            // it can still have one on the road (a 333 ms stall at 60 s with three).
-            stock(treeKey(length: size, roof: shortRoof), 4) { makeCatTree(length: size, roof: shortRoof) }
+            stock(treeKey(length: size, roof: shortRoof), shortStock[size] ?? 4) {
+                makeCatTree(length: size, roof: shortRoof)
+            }
         }
-        // Tall trees: four per size too, for a wall of tall trees across the road
-        // with the mix before still in view.
+        // Tall trees: four per size, five of the size a 12 to 14 m tall tree
+        // snaps to around 30 m/s. The mixes with three tall trees (the wall and
+        // pick your way up) give them three different lengths, so they draw on
+        // three pools, not one.
         for size in Self.tallSizes {
-            stock(treeKey(length: size, roof: tallRoof), 4) { makeCatTree(length: size, roof: tallRoof) }
+            stock(treeKey(length: size, roof: tallRoof), size == 26 ? 5 : 4) { makeCatTree(length: size, roof: tallRoof) }
         }
         // Ramps hang off the front of a tree and come back to their own pool, so
         // three of each length and height covers two ramps in a mix plus one
@@ -1077,6 +1095,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         moveItems(dz: dz, dt: dt)
         resolveContacts(dz: dz)
         guard state == .running else { return }
+        if e2eSwipes, platform.map(ObjectIdentifier.init) != loggedPlatform {
+            // Test-only: a line each time she gets on a tree or back to the road.
+            loggedPlatform = platform.map(ObjectIdentifier.init)
+            testLog(platform.map { String(format: "on tree lane %d roof %.1f", $0.lane, $0.roof) } ?? "on road")
+        }
         updateCamera(dt: dt)
         updateDuckHint()
 
@@ -1307,14 +1330,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// low thing, duck and you hit the coyote. The only way past is to steer.
     private static func b(_ lane: Int, _ ahead: Float) -> [Spawn] { [c(lane, ahead), d(lane, ahead)] }
 
+    // The mixes, by tier. Easy ones play from the start, medium from 8 s, hard
+    // from 20 s (`mediumFrom`, `hardFrom`). Cat trees are about half of every
+    // tier by weight, so about half of all mixes picked have a tree at any point
+    // in a run (Rex, 2026-10-05: more trees, side by side is fun). The tree
+    // mixes for each tier are listed after the others, from "Cat tree mixes" on.
     private static let waves: [Wave] = [
         // Easy (first 8 s): two or three things, one move at a time.
         Wave(tier: 0, spawns: [c(1, 0), c(0, 19), c(2, 19), f(1, 19), f(1, 22)]),
         Wave(tier: 0, spawns: [c(0, 0), c(2, 0), f(1, 0), f(1, 3), c(1, 19)]),
         // Food right after a coyote: the reward for jumping it.
         Wave(tier: 0, spawns: [c(1, 0), f(1, 6), f(1, 9), f(1, 12), c(0, 19), c(2, 19)]),
-        Wave(tier: 0, spawns: [t(1, 0), c(0, 10), c(2, 20)]),
-        Wave(tier: 0, spawns: [t(1, 0, 14), roof(1, 4), roof(1, 7), roof(1, 10), c(0, 8), c(2, 8)]),
+        Wave(tier: 0, spawns: [t(1, 0), c(0, 10), c(2, 20)], weight: 1.4),
+        Wave(tier: 0, spawns: [t(1, 0, 14), roof(1, 4), roof(1, 7), roof(1, 10), c(0, 8), c(2, 8)], weight: 1.4),
         Wave(tier: 0, spawns: [f(0, 0), f(1, 4), f(2, 8), c(1, 16), c(2, 24)]),
         Wave(tier: 0, spawns: [c(0, 0), c(1, 19), c(2, 38), f(2, 0), f(2, 3)]),
         Wave(tier: 0, spawns: [c(1, 0), c(1, 19), f(0, 6), f(0, 9), f(2, 12), f(2, 15)]),
@@ -1384,22 +1412,95 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // A blocked lane walks across the road with a coyote beside it.
         Wave(tier: 2, spawns: b(0, 0) + [c(1, 0)] + b(1, 22) + [c(2, 22)] + b(2, 44) + [c(0, 44)], rotates: false),
 
-        // provisional, step 7 rewrites. Tall trees and ramps, kept in the middle
-        // lane (rotates: false) so CATCART_WAVE runs are easy to script.
+        // Cat tree mixes (Rex, 2026-10-05). Each lists its line through. Things
+        // beside a tree spread with the square root of speed while the tree
+        // stretches fully, so at speed they slide toward the tree's front: write
+        // what should come after a tree past its end, never beside its tail.
+        // Low things stay out of these, so none stands beside a tree or a ramp.
+        // Most keep their lanes (rotates: false) because neighbors matter, and
+        // CATCART_WAVE runs keep the middle lane, where the pilot rides.
+
+        // Easy tree mixes.
+        // Side by side: two short trees, roof food on both, a coyote in the open
+        // lane. Jump onto either roof, or jump the coyote.
+        Wave(tier: 0, spawns: [t(0, 0, 14), t(1, 0, 14), roof(0, 5), roof(0, 9), roof(1, 5), roof(1, 9),
+                               c(2, 8)], weight: 1.4),
+        // A ramp onto a short tree: roll straight up, no jump. Coyotes beside it.
+        // From a side lane, jump the coyote or steer in before the ramp's foot.
+        Wave(tier: 0, spawns: [ramp(t(1, 0, 14)), roof(1, 4), roof(1, 10), roof(1, 14), roof(1, 18),
+                               c(0, 10), c(2, 10)], weight: 1.4),
+        // A gate of two short trees with a coyote between them and food behind it.
+        Wave(tier: 0, spawns: [t(0, 0, 11), c(1, 0), t(2, 0, 11), f(1, 6), f(1, 9),
+                               roof(0, 4), roof(0, 7), roof(2, 4), roof(2, 7)], weight: 1.4, rotates: false),
+
+        // Medium tree mixes: tall trees and ramps join here.
         // Ramp up: roll up onto a tall tree in the middle; coyotes on both sides.
         // The easy way through is up. Side lanes are two coyotes, 19 m apart.
         Wave(tier: 1, spawns: [ramp(tall(1, 0, 14)), c(0, 6), c(2, 6), c(0, 25), c(2, 25),
-                               roof(1, 13), roof(1, 16), roof(1, 19)], rotates: false),
+                               roof(1, 4), roof(1, 13), roof(1, 16), roof(1, 19)], rotates: false),
         // Staircase up: a short tree, then a tall one right behind it. Jump on,
-        // then jump from the short roof up to the tall one (or crash into its
-        // front). The sides are two coyotes each.
-        Wave(tier: 2, spawns: [t(1, 0, 14), tall(1, 14, 14), c(0, 6), c(2, 6), c(0, 25), c(2, 25),
-                               roof(1, 18), roof(1, 21), roof(1, 24)], rotates: false),
-        // Step down: a ramp up a tall tree, a short tree beside it on the right.
-        // Step right off the tall roof and drop onto the short one, where the food
-        // is. Or jump onto the short tree from the road, or jump the left coyotes.
-        Wave(tier: 2, spawns: [ramp(tall(1, 0, 14)), t(2, 8, 20), c(0, 6), c(0, 25),
-                               roof(2, 24), roof(2, 27)], rotates: false)
+        // then jump from the short roof up to the tall one before its front comes
+        // (rolling into it is a crash). The sides are two coyotes each.
+        Wave(tier: 1, spawns: [t(1, 0, 14), tall(1, 14, 14), c(0, 6), c(2, 6), c(0, 25), c(2, 25),
+                               roof(1, 5), roof(1, 9), roof(1, 18), roof(1, 21), roof(1, 24)], rotates: false),
+        // Step down: a ramp up a tall tree, a longer short tree beside it. Step
+        // right off the tall roof onto the short one for its food. Or jump onto the
+        // short tree from the road, or jump the coyotes on the left.
+        Wave(tier: 1, spawns: [ramp(tall(1, 0, 14)), t(2, 8, 20), c(0, 6), c(0, 25),
+                               roof(1, 12), roof(1, 16), roof(2, 20), roof(2, 24), roof(2, 27)], rotates: false),
+        // Twin trees: side by side, the left one shorter. Ride it and step across
+        // before it ends, or drop off and jump the coyote waiting behind it.
+        Wave(tier: 1, spawns: [t(0, 0, 11), t(1, 0, 17), roof(0, 4), roof(0, 7), roof(1, 12), roof(1, 15),
+                               c(0, 30), c(2, 4), c(2, 23)], rotates: false),
+        // A long pair with the food zigzagging between the two roofs: step back
+        // and forth to get it all. Coyotes in the open lane.
+        Wave(tier: 1, spawns: [t(0, 0, 17), t(1, 0, 17), roof(0, 3), roof(1, 7), roof(0, 11), roof(1, 15),
+                               c(2, 4), c(2, 23)], rotates: false),
+        // A pair that walks across the road: left and middle, then middle and
+        // right. The middle hands her straight on to the next tree; from the left,
+        // step right before it ends. Food on the open right lane, then up.
+        Wave(tier: 1, spawns: [t(0, 0, 14), t(1, 0, 14), t(1, 14, 11), t(2, 14, 17),
+                               roof(0, 5), roof(1, 9), roof(1, 18), roof(2, 22), roof(2, 27),
+                               f(2, 3), f(2, 6), c(0, 33)], rotates: false),
+        // A ramp beside a tall tree: the tall lane is a wall, so steer onto the
+        // ramp (or into the coyote lane). Its food is for a jump off the short
+        // roof, high enough to step across onto the tall one.
+        Wave(tier: 1, spawns: [ramp(t(1, 0, 14)), tall(0, 8, 14), c(2, 6), c(2, 25),
+                               roof(1, 4), roof(1, 12), roof(1, 16), roof(1, 20), roof(0, 14), roof(0, 18)]),
+
+        // Hard tree mixes.
+        // Tree yard: three staggered trees, one per lane. Hop roof to roof as each
+        // one ends, left to right, for all the food. Every lane meets a tree, so
+        // it's a forced jump onto a roof, kept a little rarer.
+        Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 7, 17), t(2, 14, 14),
+                               roof(0, 4), roof(0, 9), roof(1, 12), roof(1, 17), roof(2, 21), roof(2, 25),
+                               c(0, 33), c(1, 43), c(2, 47)], weight: 0.8, rotates: false),
+        // Wall with a ramp: tall trees across the road, a ramp up the middle one.
+        // Up is the only way through: steer to the middle before the ramp's foot.
+        // Level roofs, so from the top she can step across for the side food.
+        // Three lengths, so the three tall trees don't all come from one pool.
+        Wave(tier: 2, spawns: [tall(0, 8, 12), ramp(tall(1, 0, 14)), tall(2, 8, 17),
+                               roof(1, 4), roof(1, 12), roof(1, 16), roof(1, 20), roof(0, 18), roof(2, 18)],
+             weight: 1.25, rotates: false),
+        // Gap jump: two short trees in the middle with an 8 m gap and a coyote in
+        // it. Jump from the end of the first roof over the coyote onto the second
+        // (food in the air on the way). Falling in is a crash, so this lane is a
+        // jump-or-steer lane, and the one exception to 19 m between things in a
+        // lane: the coyote is cleared in the same jump. Or step left onto the
+        // tree there, ride past the gap, and step back. Coyotes on the right.
+        Wave(tier: 2, spawns: [t(1, 0, 14), c(1, 17), t(1, 22, 14), air(1, 15), air(1, 18),
+                               roof(1, 26), roof(1, 30), t(0, 10, 17), roof(0, 16), roof(0, 20),
+                               c(2, 6), c(2, 25)], weight: 1.25, rotates: false),
+        // Pick your way up: a staircase on the left (short tree, then tall), a
+        // tall wall in the middle, a ramp on the right. From the middle, steer
+        // left before the short tree or right before the ramp's foot.
+        Wave(tier: 2, spawns: [t(0, 0, 11), tall(0, 11, 12), tall(1, 11, 14), ramp(tall(2, 3, 17)),
+                               roof(0, 4), roof(0, 15), roof(0, 20), roof(1, 18), roof(2, 15), roof(2, 20)],
+             weight: 1.25, rotates: false),
+        // Two long trees with the coyotes between them: ride either side, or
+        // stay in the middle and jump twice, with food in the air.
+        Wave(tier: 2, spawns: [t(0, 0, 17), t(2, 0, 17), c(1, 0), c(1, 19), air(1, 19), air(1, 22),
+                               roof(0, 5), roof(0, 11), roof(2, 5), roof(2, 11)], weight: 1.25, rotates: false)
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
@@ -1452,9 +1553,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Returns how many meters until the next wave.
     private func spawnWave(at base: Float) -> Float {
         lastWave = pickWave()
+        let firstNew = items.count
+        defer { if e2eSwipes { logWave(from: firstNew) } }
         let wave = Self.waves[lastWave]
-        let mirror = Bool.random()
-        let rot = wave.rotates ? Int.random(in: 0...2) : 0
+        let mirror = e2eMirror ?? Bool.random()
+        let rot = wave.rotates ? (e2eRot ?? Int.random(in: 0...2)) : 0
         func place(_ lane: Int) -> Int {
             let turned = (lane + rot) % 3
             return mirror ? 2 - turned : turned
@@ -1485,12 +1588,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 rampWritten: rampWritten,
                 rampLength: spawn.ramp ? Self.snap(rampWritten * treeScale, to: Self.rampSizes) : 0)
         }
+        // Something written after a tree's end keeps its written distance from
+        // where that tree really ends. With several trees ended before it, the
+        // one that ends latest counts, not their sum: two trees side by side
+        // push what follows once, so a tree written right behind one of them is
+        // still right behind it (a hand-off), not a gap.
         func ahead(_ spawn: Spawn) -> Float {
-            var out = spawn.ahead * scale
+            var push: Float = 0
             for tree in trees where tree.spawn.ahead + tree.writtenTotal <= spawn.ahead + 0.01 {
-                out += max(0, tree.total - tree.writtenTotal * scale)
+                let end = ahead(tree.spawn) + tree.total
+                push = max(push, end - (tree.spawn.ahead + tree.writtenTotal) * scale)
             }
-            return out
+            return spawn.ahead * scale + push
         }
 
         // Where this mix meets the one before, keep the same gaps as inside a mix:
@@ -1543,6 +1652,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // so mixes run into each other. The per-lane gaps above are what keep the joins fair.
         let gapSeconds: Float = max(0.25, 0.9 - 0.7 * ramp)
         return reach + runSpeed() * gapSeconds
+    }
+
+    /// Test-only: with CATCART_SWIPES set, prints where each thing of the mix
+    /// just placed reaches her, in meters run, so a scripted line can be timed
+    /// against the `meters` in the swipe lines.
+    private func logWave(from first: Int) {
+        let parts = items[first...].map { item -> String in
+            let front = meters - item.z
+            switch item.kind {
+            case .tree:
+                return String(format: "tree lane %d %.1f-%.1f roof %.1f ramp %.1f",
+                              item.lane, front, front + item.length, item.roof, item.rampLength)
+            case .food:
+                return String(format: "food lane %d %.1f%@", item.lane, front, item.high ? " air" : "")
+            case .coyote:
+                return String(format: "coyote lane %d %.1f", item.lane, front)
+            case .low:
+                return String(format: "low lane %d %.1f", item.lane, front)
+            }
+        }
+        print(String(format: "CATCART mix %d at run %.2f s: ", lastWave, timeAlive) + parts.joined(separator: "; "))
+        fflush(stdout)
     }
 
     /// Puts one thing on the road. For a cat tree, `length` includes its ramp.
@@ -1602,6 +1733,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return node
         }
         frameLog.note("built \(key)")
+        if frameLog.enabled {
+            // Every build mid-run is a pool that ran dry, hitch or not.
+            print(String(format: "CATCART built %@ at run %.1f s", key, timeAlive))
+            fflush(stdout)
+        }
         let node = make()
         node.name = key
         return node
@@ -2337,7 +2473,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func crash() {
-        if e2ePilot {
+        if e2ePilot || e2eSwipes {
             print("CATCART crash t=\(timeAlive) speed=\(runSpeed()) wave=\(lastWave) meters=\(Int(meters))")
             fflush(stdout)
         }

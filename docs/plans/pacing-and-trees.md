@@ -119,8 +119,8 @@ Follow-up the same day:
 | 4 | Higher jump (2.6 m peak, same airtime), clear height and air food scaled to match; short tree roof to 2.0 m. Per-tree roof height: each tree knows its roof; landing, riding, stepping off, side bumps, camera, dust, and shadow use the roof of the tree she's on | done |
 | 5 | Tall tree model: two stories, built and pooled up front; crash on its front from the ground, mount from a short roof | done |
 | 6 | Ramp model and rules: slope in front of a tree, roll up, side entry low or bump, pooled up front | done |
-| 7 | New tree mixes (list above), more weight on tree mixes overall, each checked by hand against the fairness rule | not started |
-| 8 | Simulator check: screenshots of a tall tree, a ramp, and the death panel; ramp and tall-tree moves seen with `CATCART_SWIPES`; perf log; PRD update | not started |
+| 7 | New tree mixes (list above), more weight on tree mixes overall, each checked by hand against the fairness rule | done |
+| 8 | Simulator check: screenshots of a tall tree, a ramp, and the death panel; ramp and tall-tree moves seen with `CATCART_SWIPES`; perf log; PRD update | done (phone play left) |
 
 Result for steps 1 to 3 (2026-10-05, iPhone 17 simulator): speed logged at 20.4 m/s at 8 s, 24.9 at 20 s, 27.9 at 30 s, 31.3 at 45 s, 34 at 75 s, 35 at 105 s, 36 at 135 s, and 38 from about 195 s. Death pause driven with `CATCART_SWIPES` (two stumbles to crash, then `tap`, `press`/`release`, and swipes): a tap at 0.4 s and 0.5 s did nothing, a touch that began in the pause and lifted at 1.3 s did nothing, a touch held down through the crash and lifted 2.5 s later did nothing, swipes after the pause did nothing, and a tap after the pause restarted. The button showed at 1.0 s. Panel screenshots with 61 / 0 / 0:03, 2,480 / 18 / 1:12, and 12,345 / 123 / 12:34 all fit three columns; the longest shrinks all three numbers together and still reads. Time survived leaves out the `CATCART_TIME` head start (0:03 after starting at 200). `scripts/perf_run.sh` at 0 s and 60 s: steady 16.7 ms frames; two first runs each showed one stray stall with no spawn before it that did not repeat on a rerun. Not played by hand yet.
 
@@ -149,6 +149,49 @@ Checked:
 - Perf, `CATCART_PERF=1`: house 30 s, city from 120 s for 40 s, and 46, 47, 48 each forced back to back for 22 s. No hitch after the first frames of a run (the same 33 to 67 ms launch frames as the build before). Prepare takes 174 to 248 ms; the build before this took 167 to 216 ms in the same runs, so the extra pools cost little. Draw calls: mix 16 forced in house reads about 600 before and after; the ramp and staircase mixes read about 670 to 720 (a tall tree, roof food, and four coyotes); 48 at top speed in city reads about 450.
 
 Not checked: by hand on a phone, and the new mixes are placeholders, not the step 7 set.
+
+### Result, steps 7 and 8 (2026-10-05, simulator, iPhone 17 Pro)
+
+Built:
+
+- 15 tree mixes, 46 to 60 in `waves`, after the old 0 to 45. The three provisional ones (old 46 to 48) are folded in as 49 to 51, so the step 4 to 6 notes above name old numbers. Easy: 46 side by side, 47 a ramp onto a short tree, 48 a gate of two trees with a coyote between. Medium (8 s): 49 ramp up, 50 staircase up, 51 step down, 52 twin trees, 53 a long pair with food zigzagging across the roofs, 54 a pair that walks across the road (hand-off in the middle lane), 55 a ramp beside a tall wall. Hard (20 s): 56 tree yard, 57 wall with a ramp, 58 gap jump, 59 pick your way up (staircase, wall, ramp), 60 two long trees with coyotes between. Food on the roofs of all of them, and on the ramps.
+- Weights: every tier is half tree mixes. The two old easy tree mixes and the three new easy ones weigh 1.4, the medium ones 1, the hard ones 1.25 (the yard 0.8, since every lane meets a tree). Tree share from the tier weights in `pickWave`: 50.0% at 5 s, 50.6% at 15 s, 50.4% at 30 s, 50.3% at 75 s (master was 22%, 33%, 38%, 38%).
+- What follows a tree's end now keeps its distance from the tree that ends latest, not the sum of every tree that ended before it. With the sum, two trees side by side pushed what came after twice, so a tree written right behind one of a pair (mix 54) landed with a gap instead of a hand-off. One-tree mixes place the same as before.
+- Gap jump: the plan wanted "jump the gap roof to roof, or fall in and jump the coyote". Both can't be fair: a jump from the roof only carries about 15 m (at 17 m/s), and falling in needs about 19 m to land and jump the coyote, then 19 m more before the next tree. So the gap is 8 m with the coyote 3 m in: you jump it from the roof (the takeoff window is about 0.4 s), or step left onto the tree there and ride around. Falling in is a crash. It's the one mix that breaks 19 m in a lane, and the PRD says so.
+- The wall and pick your way up give their three tall trees three lengths (12, 14, 17), so at speed they snap to three pool sizes instead of one, and the side walls end at different points.
+- Pools: a model of the spawner (900 two-minute runs from 0, 100, and 200 s) showed master already ran dry on 28 and 32 m short trees in about 10 to 14% of runs, and the new mixes push harder. Now short trees are 4 each, 5 of 14 and 20 m, 6 of 24 and 36, 7 of 28 and 32; tall trees 4 each, 5 of 26 m; ramps unchanged at 3. Under 1% of modeled runs need one more. `CATCART_PERF=1` now prints every mid-run build.
+- Test hooks: with `CATCART_SWIPES`, each mix prints where its things reach her in meters run, swipe lines show meters, and a line prints when she gets on a tree or back on the road, and on a crash. `CATCART_MIRROR` and `CATCART_ROT` fix a mix's flip and turn so a scripted line knows its lanes.
+
+Checked, each mix forced with `CATCART_WAVE`:
+
+| Mix | Line through | How checked |
+|---|---|---|
+| 46 side by side | jump onto either roof, or jump the coyote | god + pilot screenshots at 0 and 200; pilot without god at 0 and 200, no crash |
+| 47 ramp onto short | roll up; sides jump the coyote | same |
+| 48 gate | middle jumps the coyote, sides ride | same |
+| 49 ramp up | roll up onto the tall roof; sides jump two coyotes | same |
+| 50 staircase up | jump on, jump from the short roof to the tall one | same (pilot does the roof-to-roof jump) |
+| 51 step down | roll up, step right onto the short roof | same, plus swipes: on tall roof 3.5, step right, floor 2.0 |
+| 52 twins | ride the short one, step across before it ends | same, plus swipes: left, jump, step right at 47 m, rode the long one to its end |
+| 53 zigzag pair | step back and forth for the food | same, plus swipes: four steps across, all on roofs |
+| 54 pair walks across | middle hands off to the next tree; left steps right | same (pilot rides the hand-off at 0 and 200) |
+| 55 ramp beside wall | steer onto the ramp; jump off the short roof sideways onto the tall one | god + pilot screenshots; swipes: from the wall lane back onto the ramp, then a sideways swipe 0.08 s into a roof jump is a stumble (2.96 m, under the 3.0 it needs) and 0.18 s in lands on the tall roof; rotated with the wall in the middle, steering right onto the ramp and left over two coyotes both clear |
+| 56 yard | hop left to right roof to roof | god + pilot; pilot without god at 0 and 200; swipes: three roofs in a row |
+| 57 wall with a ramp | steer to the middle before the ramp's foot, roll up | god + pilot; swipes at 0 and 200: left into the wall lane, back right, rolled up to 3.5, stepped left across onto the side wall |
+| 58 gap jump | jump from the first roof over the coyote onto the second | swipes: takeoff 3 m and 7.5 m before the end lands on the second roof, 10 m early lands back on the first and rolls off; falling in crashes; stepping left onto the side tree and back right works; at 200, takeoff 5 m before the end lands |
+| 59 pick your way up | from the middle, left to the staircase or right to the ramp | swipes at 0: ramp, staircase, and staying in the middle (crash into the wall, as it should); staircase again at 200; pilot without god crashes in the middle at 200 (the control) |
+| 60 trees and coyotes | ride a side, or jump twice in the middle | god + pilot; pilot without god at 0 and 200, no crash |
+
+A model of `spawnWave` also checked every mix, old and new, at 17, 20, 25, 28, 34, and 38 m/s: no same-lane gap under 19 m (24 coyote to low thing) except the gap jump, and no low thing beside a tree or ramp.
+
+Step 8, merged check:
+
+- Perf, `scripts/perf_run.sh`: 90 s from the start in city, and 56 (house), 57 (city), 58 (farm), 59 (house), 60 (jungle) each forced back to back at `CATCART_TIME=200` for 26 s. No mid-run builds anywhere. No hitches after the run's first two frames (the same 33 to 50 ms launch frames as before), except one 33 ms frame in 59 at 202.6 s with nothing built before it, which didn't come back on a rerun. Prepare 182 to 205 ms (was 174 to 248 after steps 4 to 6), so the 13 extra trees cost nothing visible.
+- Draw calls (stats bar): mix 16 in house 600 to 630 (was about 600); wall of tall trees 350 to 410; side by side 410 to 510; pick your way up 370 to 430; yard 490 to 620; ramp up with four coyotes in city 650 to 760 (the earlier ramp mixes read 670 to 720).
+- Screenshots: city (ramp up a tall tree, the higher jump over coyotes), house (the wall with its ramp, side-by-side trees), farm (pick your way up, the yard, twins, and the death panel with score, food, and time).
+- `scripts/e2e_visual.sh`: ran clean (exit 0). Sampled the city burst, 10, 22, and 32 s, and the house, farm, and jungle stills: HUD, cart, coyotes, food, and trees all draw right; at 22 s a tree with food on its roof sits ahead in farm.
+
+Not checked: played by hand or on a phone. Whether half trees feels right, and whether the gap jump's 0.4 s window is fair for mom, are Rex's calls once he plays it. Forcing one mix back to back from the start can still run a pool dry (a mix never follows itself in play); at `CATCART_TIME=200` the forced runs fit.
 
 Built with subagents, each in its own worktree and simulator: one for steps 1 to 3, one for steps 4 to 6 at the same time, then one for step 7 on top of both. Step 8 is the merged check.
 
