@@ -218,7 +218,34 @@ final class KittenCart {
         kittenBody = kitten.childNode(withName: "body", recursively: false)
         holdUnsquashed(head)
         holdUnsquashed(kitten.childNode(withName: "tail", recursively: true))
+        addCollar()
         startIdle(kitten)
+    }
+
+    /// An orange collar with a little gold bell, riding on the head's neck line
+    /// so it leans with her. Sized to the head joint in cat_kitten.scn.
+    private func addCollar() {
+        guard let head else { return }
+        let orange = SCNMaterial()
+        orange.diffuse.contents = UIColor(red: 1.0, green: 0.52, blue: 0.08, alpha: 1)
+        orange.lightingModel = .lambert
+        let band = SCNTorus(ringRadius: 0.175, pipeRadius: 0.028)
+        band.materials = [orange]
+        let collar = SCNNode(geometry: band)
+        collar.name = "collar"
+        collar.position = SCNVector3(0, -0.04, -0.06)
+        collar.scale = SCNVector3(1, 1, 1.1)
+        head.addChildNode(collar)
+
+        let gold = SCNMaterial()
+        gold.diffuse.contents = UIColor(red: 1.0, green: 0.8, blue: 0.25, alpha: 1)
+        gold.lightingModel = .blinn
+        gold.specular.contents = UIColor.white
+        let bellShape = SCNSphere(radius: 0.04)
+        bellShape.materials = [gold]
+        let bell = SCNNode(geometry: bellShape)
+        bell.position = SCNVector3(0, -0.07, -0.255)
+        head.addChildNode(bell)
     }
 
     /// Puts a part in a holder at the same spot. When the body squashes for the
