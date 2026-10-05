@@ -97,13 +97,13 @@ Copy Subway Surfers where it matters. Invent around the cat, not around the came
 
 ### Camera and speed
 
-Behind the cat, a little above, three lanes. The road bends down over a hill in the distance ("curved world", a shader on every 3D thing), and fades into fog, like Subway Surfers. Objects come over the crest small, grow, and rip past the camera. They must not slow down at the cat or behind him.
+Behind the cat and above her, looking down the road like Subway Surfers, three lanes. The road bends down over a hill in the distance ("curved world", a shader on every 3D thing), and fades into fog, like Subway Surfers. Objects come over the crest small, grow, and rip past the camera. They must not slow down at the cat or behind him.
 
 The cat never moves forward. The whole track (road, scenery, coyotes, food, trees) slides toward the camera at one speed. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
 
 Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 34 at 75 s (Rex's call, 2026-10-05, was two and a half minutes). It climbs fast early and settles (about 20 at 8 s, 25 at 20 s, 28 at 30 s, 31 at 45 s), so it's hard by 30 s. After 75 s speed keeps creeping up 1 m/s every 30 s and stops at 38 (about 3:15), so long runs still get harder; the jump, clear height, and gaps stay where they are at 75 s. Things appear about 118 m ahead, inside the fog.
 
-The camera trails the cat: it follows her lane partway, rises when she rides a tree, rolls a touch on lane changes, and widens a little as the run speeds up.
+The camera trails the cat: it follows her lane partway, rises with the floor she rides (road, roof, ramp) and with a little over half of each jump, rolls a touch on lane changes, and widens a little as the run speeds up. She never hides the road ahead: on the road she sits about two thirds down the screen, and at the top of any jump, from the road or off a tall tree, she stays under the crest where things come into view (Rex's call, 2026-10-05). Anything hanging over the road (bunting, branches, ceiling beams) stays above 9.8 m so the camera never passes through it.
 
 ### Lanes
 

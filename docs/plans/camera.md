@@ -4,7 +4,7 @@ Goal: the cat never hides the road ahead. At the top of a jump, on a tall cat tr
 
 Asked by Rex on 2026-10-05: "you can't really see anything up ahead of him because he kind of blocks the screen and goes really high."
 
-## Why she blocks the view today
+## Why she blocked the view
 
 The run camera sits 2.9 m up and 4.4 m behind her, tilted down only about 3 degrees (`cameraBase`, `cameraPitch` in `GameScene.swift`). It looks almost straight ahead at about her height.
 
@@ -21,44 +21,47 @@ The run camera sits 2.9 m up and 4.4 m behind her, tilted down only about 3 degr
 
 ## Rules
 
-- Higher and steeper. Starting guess: about 3.6 m up, 5.5 m back, tilted down 14 to 18 degrees. `3d-world.md` started near here (3.5 m up, 6 m back, 20 degrees) and was tuned flatter later. Final numbers are Rex's pick from screenshots.
-- The camera aims at a point on the road about 25 m ahead, at the height of the floor she rides (road, roof, or ramp). The tilt comes from that aim, not a fixed angle, so the horizon stays put when she climbs a tree.
-- Measured goal: at the top of a jump, on the road and off a tall roof, the top of her head stays below the far road on screen (the road at about 40 m).
-- The camera still ignores most of the jump arc. The 0.09 m per meter bob stays unless the screenshots say otherwise.
-- Up fast, down slow: the camera rises onto a roof quicker than today (aim for about 0.2 s), and keeps the gentle ease coming down.
-- Lane follow (60%), lane roll, speed FOV widening, crash shake, and the home screen swoop keep working as they do today.
-- Her silhouette from behind: the PRD says the run view shows the back of her round head and shoulders over the box rim. A steeper camera sees more of the top of her head and the box. Check that it still reads as her.
+- Higher and steeper, from the same distance back: 4.0 m over the floor she rides (was 2.9), 4.4 m behind her (same), tilted down about 14 degrees (was 3) by aiming at the road 12 m ahead of her. Field of view 50 degrees across (was 56), so she stays the size she was. On the road she sits where she did, about two thirds down the screen; the crest moved up from the middle to about 43% down.
+- The camera rides the floor she's on (road, roof, or ramp) all the way up, and 60% of a jump. The old camera rose three quarters of the way onto a short roof and 0.09 m per meter of jump.
+- Up fast, down slow: it eases toward its goal at 12 per second going up and 5 coming down (was 4 both ways), so landing on a tall roof doesn't leave her over the crest.
+- The sky pictures hang on a pivot under the camera that tilts them back up to the old 3 degree angle, so the painted horizon still meets the fog. The tilt fades out on the swoop to the home screen, whose camera already holds the sky right.
+- Nothing hangs over the road below 9.8 m (`overheadClear` in `Scenery.swift`). The camera tops out near 9.1 m at the top of a jump off a tall tree, and she reaches 7.7 m. Before this, the city bunting dipped to 5.5 m, the jungle moss to about 5 m, and the house beams sat at 7.1 m, so she and the camera already went through them on tall trees.
+- Lane follow (60%), lane roll, speed FOV widening, crash shake, and the home screen swoop work as before.
 
-## Things that could break
+## How the numbers were picked
 
-- The sky. The two sky pictures hang on the camera, centered on where it points. Tilting the camera down tilts them too, so the painted horizon may no longer meet the fog. Likely fix: hang them level and at horizon height, not on the camera's center line.
-- The spray bottle peeks up from the bottom of the screen at 1.7 m behind the cart. With the camera further back and higher, it may sit somewhere else on screen.
-- Lamps and anything overhead (the low things you duck under) could clip a higher camera. The middle lane has no lamps for this reason.
-- More road on screen means more of the near road and less sky; check that the fog still hides things popping in at about 118 m.
-- Shadows: `maximumShadowDistance` is 45 m. A steeper view shows more near road, so it should still cover it, but look.
+A small model (screen height of the crest and of her, from camera height, distance, tilt, jump follow, and field of view; it matched the screenshots) compared framings. The bind: the camera's height over her at the top of a jump decides whether she covers the crest. Pulling the camera back for a gentler angle shrinks her; following more of the jump makes the world bob. 4.0 / 4.4 / 12 / 0.6 / 50 keeps her the old size and spot on the road and leaves a clear gap under the crest at the top of a jump (about 9% of the screen). The first try, 4 m up and 6 m back at 56 degrees, cleared the crest by only about 3% and made her a third smaller.
+
+Checked in shots, by number (fraction of screen height, from the top): before, the top of a jump put her at 0.37 to 0.50 with the crest at 0.52, right over it. Now she's at 0.53 to 0.66 with the crest at 0.44.
+
+## Checking it
+
+`scripts/camera_shots.sh [out dir] [world]` takes the six moments as frozen frames and lays them side by side. `CAM="4,4.4,12,0.6,50"` tries other numbers without a code change (the `CATCART_CAM` test hook). Freezes come from a `freeze` step in `CATCART_SWIPES`.
 
 ## Done when
 
 - At the top of a jump, on the road and off a tall roof, you can see the road over the crest above her head.
 - Landing on a tall roof doesn't leave her high on screen.
-- Rex has picked the framing from screenshots, and played it on the phone.
 - Sky meets fog with no seam in all four worlds; the bottle, the home swoop, the crash shake, and the death panel still look right.
 - `CATCART_PERF=1` shows no new hitches.
 - The PRD's camera line describes the new camera.
+- Rex plays it on the phone.
 
 ## Steps
 
 | # | Step | State |
 |---|---|---|
-| 1 | Baseline screenshots in the simulator: a plain run, the top of a jump on the road, riding a tall roof, just after landing on one, and the top of a jump off one. Use `CATCART_WAVE` with a tall-tree mix and the pilot or `CATCART_SWIPES` to hit those moments. Note where her head sits against the far road in each | todo |
-| 2 | Aim the camera at a point down the road at her floor height, instead of a fixed tilt, with today's numbers. It should look the same on the road | todo |
-| 3 | Fix the sky so it stays level when the camera tilts down | todo |
-| 4 | Try three framings (today, a middle one, and the 3.6 m / 5.5 m / about 16 degree guess). Same five shots for each, side by side, for Rex to pick | todo |
-| 5 | Up fast, down slow onto roofs | todo |
-| 6 | Only if step 4's pick still covers the road at the top of a jump off a tall roof: lift the camera just enough to keep her head below the far road | todo |
-| 7 | Check the fallout list: bottle, lamps, home swoop, crash shake, lane roll, death panel, all four worlds. Perf run. Update the PRD camera line | todo |
+| 1 | Baseline screenshots of the six moments | done |
+| 2 | Camera aims down the road at a set tilt, rides the floor plus part of the jump, up fast and down slow | done |
+| 3 | Sky held at the old angle when the camera tilts down | done |
+| 4 | Compare framings (model plus shots) and pick one. Rex left the pick to the agent | done |
+| 5 | Up fast, down slow onto roofs | done (in step 2) |
+| 6 | Extra lift at the top of a jump off a tall roof | not needed: step 4's pick already clears the crest there |
+| 7 | Fallout: overhead things raised to 9.8 m; bottle, home, swoop, death panel, all four worlds checked; perf run; PRD camera lines | done |
 | 8 | Rex plays it on the phone | todo |
+
+Result (2026-10-05, iPhone 17 Pro simulator): the six moments in city, and riding and jumping off a tall tree in jungle, house, and farm, all show the road and the crest above her. The spray bottle now shows in full, hopping beside the cart, where it used to peek up from the bottom edge. The death panel is unchanged. The house hall is taller (walls 10 m, was 7.2), and the bunting and the jungle branch hang higher, framing the top of the view. `scripts/perf_run.sh 45 house`: steady 16.7 ms frames; the two hitches at run start were there before. Not played by hand yet.
 
 ## Open questions
 
-- How much of her face and back Rex wants to keep versus how much road he wants to see. Step 4 answers it.
+- From 4 m up she's seen from a bit higher (about 35 degrees down at her, was 24), so more of the top of her head and the cans in the box show. Rex to judge on the phone whether she still reads as her from behind.

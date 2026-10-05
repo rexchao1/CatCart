@@ -236,9 +236,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// again" button pops in when it ends, so you can see when tapping works again.
     private let deathPause: Float = 1.0
 
-    private let cameraBase = SIMD3<Float>(0, 2.9, 4.4)
-    private let cameraPitch: Float = -0.055
-    private let baseFOV: CGFloat = 56
+    // Run camera, framed like Subway Surfers: high and looking down, so she sits
+    // low on screen and the road runs up past her to the crest. It sits this high
+    // over the floor she rides (road or roof) and this far behind her, tilted down
+    // at the road `cameraAim` meters ahead of her. See docs/plans/camera.md.
+    // On the road she sits where the old flat camera had her, about two thirds
+    // down, but the crest is higher on screen and stays above her in a jump.
+    private var cameraHeight: Float = 4.0
+    private var cameraBack: Float = 4.4
+    private var cameraAim: Float = 12
+    /// The share of a jump the camera rises with. Enough that she stays under the
+    /// crest at the top of a jump, not so much that the world bobs.
+    private var cameraJumpFollow: Float = 0.6
+    private var cameraPitch: Float { -atan(cameraHeight / (cameraBack + cameraAim)) }
+    /// The sky pictures stay at the angle the old flat camera held them, so their
+    /// painted horizon still meets the fog.
+    private let skyPitch: Float = -0.055
+    private let skyPivot = SCNNode()
+    private var baseFOV: CGFloat = 50
     /// Home screen camera: in front of her and a little to the side, looking back at her face.
     private let homeEye = SIMD3<Float>(0.9, 1.6, -2.75)
     private let homeTarget = SIMD3<Float>(0, 0.9, 0.25)
@@ -494,6 +509,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// meters run), each time she gets on a tree or back on the road, and a crash.
     private let e2eSwipes = ProcessInfo.processInfo.environment["CATCART_SWIPES"] != nil
     private var loggedPlatform: ObjectIdentifier?
+    /// Test-only: set by a CATCART_SWIPES "freeze". The game stops updating but keeps drawing.
+    private var testFrozen = false
 
     private func testLog(_ what: String) {
         guard e2eSwipes else { return }
@@ -528,6 +545,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         default: startWorld = 0
         }
 
+        // Test-only: CATCART_CAM="4,4.4,12,0.6,50" sets the run camera's height,
+        // distance back, aim, jump follow, and field of view, to compare framings
+        // without a rebuild.
+        if let cam = ProcessInfo.processInfo.environment["CATCART_CAM"]?
+            .split(separator: ",").compactMap({ Float($0) }), cam.count == 5 {
+            (cameraHeight, cameraBack, cameraAim, cameraJumpFollow) = (cam[0], cam[1], cam[2], cam[3])
+            baseFOV = CGFloat(cam[4])
+        }
         buildCamera()
         buildLights()
         buildPlayer()
@@ -564,13 +589,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// seconds after launch through the same touch code a finger uses.
     /// "4:stumble" trips her as if she clipped something. "6:tap" is a finger down
     /// and up without moving. "5:press" puts a finger down and "7:release" lifts it,
-    /// for a touch that's still down when she crashes.
+    /// for a touch that's still down when she crashes. "3:freeze" stops the game on
+    /// that frame for 3 s, so a screenshot catches an exact moment.
     private func scheduleTestSwipes() {
         guard let script = ProcessInfo.processInfo.environment["CATCART_SWIPES"] else { return }
         for step in script.split(separator: ",") {
             let parts = step.split(separator: ":")
             guard parts.count == 2, let at = Double(parts[0]) else { continue }
             let touches: [String: (GameScene) -> Void] = [
+                "freeze": { game in
+                    game.testFrozen = true
+                    game.testLog("freeze")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { game.testFrozen = false }
+                },
                 "stumble": { game in game.enqueue(.stumble) },
                 "tap": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)); game.touchEnded() },
                 "press": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)) },
@@ -614,19 +645,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         camera.zNear = 0.3
         camera.zFar = 260
         cameraNode.camera = camera
-        cameraNode.position = SCNVector3(cameraBase.x, cameraBase.y, cameraBase.z)
+        cameraNode.position = SCNVector3(0, cameraHeight, cameraBack)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, 0)
         scene.rootNode.addChildNode(cameraNode)
 
         // The sky is two big pictures hung far in front of the camera. B fades in
         // over A as you drive toward the next world.
+        cameraNode.addChildNode(skyPivot)
         for (node, order) in [(skyA, -100), (skyB, -99)] {
             let plane = SCNPlane(width: 1, height: 1)
             plane.materials = [skyMaterials[worldAt(startWorld)]!]
             node.geometry = plane
             node.renderingOrder = order
             node.position = SCNVector3(0, 0, -200)
-            cameraNode.addChildNode(node)
+            skyPivot.addChildNode(node)
         }
         skyB.opacity = 0
         sizeSky(aspect: 844 / 390)
@@ -1041,6 +1073,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
         let dt = Float(lastTime == 0 ? 1.0 / 60.0 : min(1.0 / 30.0, time - lastTime))
         lastTime = time
+        guard !testFrozen else { return }
         frameLog.frame(at: time, runTime: timeAlive)
         handleInput()
         updatePuffs(dt: dt)
@@ -1116,30 +1149,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateCamera(dt: Float) {
-        // The camera trails the cat a little: it follows her lane at 60%, and rises
-        // when she rides a tree, but it lags so lane changes and landings feel weighty.
-        // It follows a ramp's slope the same way, so the climb is smooth.
-        cameraLift += (floorY - cameraLift) * min(1, 4 * dt)
+        // The camera trails the cat a little: it follows her lane at 60%, and rides
+        // up with the floor she's on (road, roof, or ramp slope) plus some of a jump.
+        // It goes up quickly, so she never sits over the crest after landing on a
+        // tall roof, and comes down slower, so landings feel weighty.
+        let goalY = floorY + max(0, height - floorY) * cameraJumpFollow
+        let rate: Float = goalY > cameraLift ? 12 : 5
+        cameraLift += (goalY - cameraLift) * min(1, rate * dt)
         let goalX = visualX * 0.6
         runCameraX += (goalX - runCameraX) * min(1, 9 * dt)
-        let x = runCameraX
-        // It rises three quarters of the way up to a short roof, then all the way
-        // with anything higher, so a tall roof is framed like a short one: the
-        // camera stays 2.4 m over her and looks past her head down the road.
-        // Rising less there put her head right over the road ahead. In a jump it
-        // bobs up a little (0.09 per meter, was 0.12 with the 1.9 m jump, so the
-        // camera moves as before and the higher arc shows on screen).
-        let rise = min(cameraLift, shortRoof) * 0.75 + max(0, cameraLift - shortRoof)
-        let y = cameraBase.y + rise + max(0, height - floorY) * 0.09
-        cameraNode.position = SCNVector3(x, y, cameraBase.z)
+        cameraNode.position = SCNVector3(runCameraX, cameraLift + cameraHeight, cameraBack)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, -tilt * 0.08)
         // A slightly wider view as the run speeds up.
         let boost = CGFloat(max(0, runSpeed() - 17) * 0.35)
         cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0)
 
         // Home screen, or the swoop from it: mix toward the front view of her face.
-        guard homeBlend > 0 else { return }
+        // The home view already holds the sky where it looks right, so the sky's
+        // tilt back up fades out on the way there.
         let t = homeBlend * homeBlend * (3 - 2 * homeBlend)
+        skyPivot.eulerAngles.x = (skyPitch - cameraPitch) * (1 - t)
+        guard homeBlend > 0 else { return }
         var eye = homeEye
         eye.x += visualX + sin(homeClock * 0.5) * 0.25
         eye.y += sin(homeClock * 0.37) * 0.06

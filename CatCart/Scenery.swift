@@ -24,7 +24,11 @@ private typealias PlatformColor = NSColor
 //
 // Coordinates are meters. +y is up, the player sits at z = 0, ahead is -z.
 // The road is |x| <= 3. Nothing here pokes into |x| < 3.2 unless it is higher
-// than 4.5 m (branches, garlands, lamp arms).
+// than `overheadClear` (branches, garlands, ceiling beams).
+
+/// The lowest anything may hang over the road. The run camera tops out near 9.1 m
+/// (the top of a jump off a tall cat tree), and she reaches 7.7 m.
+let overheadClear: Float = 9.8
 
 enum WorldKind: Int, CaseIterable { case city, jungle, house, farm }
 
@@ -508,8 +512,9 @@ final class SceneryLibrary {
         }
 
         // A bunting garland across the street now and then, well above the cart.
+        // Its flags hang 1.65 m below the poles' tops.
         if r.chance(0.45) {
-            garland(b, z: -L * r.f(0.3, 0.7), x: front, y: 7.2, r: &r)
+            garland(b, z: -L * r.f(0.3, 0.7), x: front, y: overheadClear + 1.7, r: &r)
         }
     }
 
@@ -635,7 +640,8 @@ final class SceneryLibrary {
         if r.chance(0.7) {
             let z = -L * r.f(0.25, 0.75)
             let bark = rgb(0x7E4E2E), leaf = rgb(0x3FAE3A), leafDark = rgb(0x2E8F34)
-            let y: Float = 7.6
+            // High enough for 1.5 m of moss to hang over the road.
+            let y: Float = overheadClear + 1.8
             // Trunks holding it up on both sides.
             for s: Float in [-1, 1] {
                 b.frustum(r0: 0.75, r1: 0.55, h: y + 0.4, sides: 7, bark, _: translate(s * 7.5, 0, z))
@@ -647,7 +653,7 @@ final class SceneryLibrary {
                 b.blob(SIMD3(x, y + 0.6, z + r.f(-0.4, 0.4)), SIMD3(r.f(1.2, 1.8), r.f(0.8, 1.1), r.f(1.2, 1.7)),
                        r.chance(0.5) ? leaf : leafDark, segments: 6, rings: 3)
                 if let moss = models["jungle_hanging_moss"], r.chance(0.8) {
-                    let s: Float = r.f(3, 4.5)
+                    let s = min(r.f(3, 4.5), (y - 0.3 - overheadClear) / moss.size.y)
                     b.add(moss, translate(x + r.f(-0.4, 0.4), y - 0.3 - moss.size.y * s, z + r.f(-0.3, 0.3))
                               * rotateY(r.f(0, 6.28)) * scale(s, s, s))
                 }
@@ -664,7 +670,8 @@ final class SceneryLibrary {
     ]
 
     private func buildHouse(_ b: MeshBuilder, _ L: Float, _ r: inout SeededRandom) {
-        let wallX: Float = 7.0, wallH: Float = 7.2
+        // The beams across the top of the walls must clear the camera.
+        let wallX: Float = 7.0, wallH: Float = overheadClear + 0.2
         let white = rgb(0xFBF7EF)
         let woods: [UInt32] = [0xC98B55, 0xBF8150, 0xD29560, 0xB97A48]
         let paint = r.pick(Self.wallPaints)
@@ -726,7 +733,7 @@ final class SceneryLibrary {
         }
 
         // Ceiling beams across the hall with pendant lamps. They frame the view like
-        // the jungle branches, and hang well above the cart (lowest point 5.4 m).
+        // the jungle branches. The lamps hang to 5.4 m, but beside the road.
         let beam = rgb(0xA8703F), shade = rgb(r.pick([0xFFD166, 0xFF8FA3, 0x7FD1C7, 0xFFFFFF])), cord = rgb(0x3A2F2F)
         for zb in [-L * 0.25, -L * 0.75] {
             b.box(SIMD3(-wallX - 0.1, wallH - 0.1, zb - 0.3), SIMD3(wallX + 0.1, wallH + 0.5, zb + 0.3), beam,
