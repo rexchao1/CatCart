@@ -33,6 +33,18 @@ final class KittenCart {
     private var head: SCNNode?
     private var headRest = SCNVector3Zero
     private var kitten: SCNNode?
+    /// How far she has sunk into the box: 0 sitting up, 1 ducked. It's a spring,
+    /// so she pops back up a little past sitting and settles.
+    private var duck: Float = 0
+    private var duckSpeed: Float = 0
+    /// Ducked, her eyes sit at the rim. She sinks only as far as the box floor
+    /// (any lower and her bottom shows under the box), and the rest comes from
+    /// squashing her body, which the box walls hide. Her head and tail ride in
+    /// holders that undo the squash, so they keep their shape.
+    static let duckSink: Float = 0.08
+    static let duckSquash: Float = 0.42
+    private var kittenBody: SCNNode?
+    private var unsquashed: [SCNNode] = []
 
     /// True when the Blender kitten loaded. False means a simple stand-in is showing.
     private(set) var hasModel = false
@@ -48,8 +60,22 @@ final class KittenCart {
 
     // MARK: - Per frame
 
-    /// Spin the wheels with the road, and lean her head into lane changes.
-    func update(dt: Float, speed: Float, rolling: Bool, tilt: Float) {
+    /// Spin the wheels with the road, lean her head into lane changes, and sink
+    /// her into the box while `ducking` is true.
+    func update(dt: Float, speed: Float, rolling: Bool, tilt: Float, ducking: Bool = false) {
+        // A springy chase toward the goal: stiff enough to duck in under a tenth of
+        // a second, loose enough to overshoot on the way up, so she pops out.
+        let goal: Float = ducking ? 1 : 0
+        duckSpeed += ((goal - duck) * 900 - duckSpeed * 34) * dt
+        duck += duckSpeed * dt
+        duck = max(-0.12, min(1.05, duck))
+        if let kitten, let kittenBody {
+            kitten.position.y = seatY - Self.duckSink * min(1, duck)
+            // Below 0 (the pop on the way up) she stretches a little taller.
+            let squash = 1 - Self.duckSquash * duck
+            kittenBody.scale.y = squash
+            for holder in unsquashed { holder.scale.y = 1 / squash }
+        }
         if rolling {
             let spin = speed / wheelRadius * dt
             for w in wheels { w.eulerAngles.x -= spin }
@@ -188,7 +214,25 @@ final class KittenCart {
 
         head = kitten.childNode(withName: "head", recursively: true)
         headRest = head?.eulerAngles ?? SCNVector3Zero
+        // The model's origin is under her bottom, so squashing "body" in y keeps her seated.
+        kittenBody = kitten.childNode(withName: "body", recursively: false)
+        holdUnsquashed(head)
+        holdUnsquashed(kitten.childNode(withName: "tail", recursively: true))
         startIdle(kitten)
+    }
+
+    /// Puts a part in a holder at the same spot. When the body squashes for the
+    /// duck, the holder scales the other way. The part's own turns (head lean,
+    /// tail sway) happen inside the holder, so they never get skewed.
+    private func holdUnsquashed(_ part: SCNNode?) {
+        guard let part, let parent = part.parent else { return }
+        let holder = SCNNode()
+        holder.position = part.position
+        part.removeFromParentNode()
+        part.position = SCNVector3Zero
+        holder.addChildNode(part)
+        parent.addChildNode(holder)
+        unsquashed.append(holder)
     }
 
     /// A plain gray kitten shape, only shown if the Blender model is missing.

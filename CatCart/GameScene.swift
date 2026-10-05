@@ -33,6 +33,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case coyote
         case food
         case tree
+        /// Something low across the lane (scaffold, log, table, clothesline).
+        /// She has to duck into the box to pass under it.
+        case low
     }
 
     private enum Intent {
@@ -108,6 +111,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Best distance, saved on the phone. The 2D build counted "meters" about 7x faster
     /// under the key "bestMeters", so the 3D build keeps real meters under a new key.
     private static let bestKey = "bestMeters3D"
+    /// Set once she has ducked under a low thing, so the duck hint stops showing.
+    private static let duckedKey = "duckedUnderOnce"
 
     // MARK: - Tuning (meters and seconds)
 
@@ -134,6 +139,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let jumpBufferTime: Float = 0.18
     /// Above this height a coyote passes under you and a tree front is a landing, not a crash.
     private let clearHeight: Float = 0.7
+    /// A swipe down on the ground sinks her into the box this long. Another swipe
+    /// down while ducked starts the count again.
+    private let duckTime: Float = 0.8
+    /// The underside of every low thing. Sitting up, her head reaches about 1.68 m;
+    /// ducked, only her eyes and ears show over the rim and she's about 1.25 m.
+    private let lowClearance: Float = 1.38
     private let worldSeconds: Float = 10
 
     private let cameraBase = SIMD3<Float>(0, 2.9, 4.4)
@@ -310,6 +321,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var cameraLift: Float = 0
     private var landSquash: Float = 0
     private var jumpBuffer: Float = 0
+    /// Seconds of duck left. Above 0 she's down in the box.
+    private var duckTimer: Float = 0
+    /// Swiped down in the air: she drops fast, then ducks the moment she lands.
+    private var duckQueued = false
+    /// True until she has ducked under her first low thing, ever. Until then a
+    /// one-line hint shows as low things come.
+    private var duckHintNeeded = !UserDefaults.standard.bool(forKey: GameScene.duckedKey)
+    private var duckHintShown = false
     /// 1 on the home screen, easing to 0 as the camera swoops behind her for the run.
     private var homeBlend: Float = 1
     private var homeClock: Float = 0
@@ -340,10 +359,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let e2ePilot = ProcessInfo.processInfo.environment["CATCART_PILOT"] == "1"
     /// Test-only: CATCART_TIME=120 starts each run that many seconds into the difficulty ramp.
     private let e2eStartTime = Float(ProcessInfo.processInfo.environment["CATCART_TIME"] ?? "") ?? 0
+    /// Test-only: CATCART_WAVE=29 plays only that obstacle mix (its index in `waves`).
+    private let e2eWave = Int(ProcessInfo.processInfo.environment["CATCART_WAVE"] ?? "")
     /// Test-only: CATCART_PERF=1 prints frame times and every hitch.
     private var frameLog = FrameLog(enabled: ProcessInfo.processInfo.environment["CATCART_PERF"] == "1")
 
     private var isHighEnough: Bool { height > clearHeight || onPlatform }
+    /// Low enough to pass under a low thing: down in the box, near the ground.
+    /// A queued duck counts too, so a fast drop from a jump makes it under.
+    private var isDucked: Bool { (duckTimer > 0 || duckQueued) && height - floorY < 0.3 }
     private var floorY: Float { onPlatform ? roofY : 0 }
 
     // MARK: - Setup
@@ -652,7 +676,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func currentPlayerWorld() -> WorldKind {
-        segments.first { $0.near >= 0 && $0.near - segmentLength < 0 }?.world ?? worldAt(startWorld)
+        worldAt(z: 0)
+    }
+
+    /// The world the road is in at this z.
+    private func worldAt(z: Float) -> WorldKind {
+        segments.first { $0.near >= z && $0.near - segmentLength < z }?.world ?? worldAt(startWorld)
     }
 
     /// Drive-into-it world change. As the first slice of the next world gets close,
@@ -782,7 +811,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         stock("coyote", 10) { makeCoyote() }
         stock("food", 16) { makeFood() }
         for size in Self.treeSizes {
-            stock("tree\(Int(size))", 3) { makeCatTree(length: size) }
+            // Four: the staircase mix uses three of one size, and the mix before
+            // it can still have one on the road (a 333 ms stall at 60 s with three).
+            stock("tree\(Int(size))", 4) { makeCatTree(length: size) }
+        }
+        // The busiest mixes have three low things, all in one world, and at top
+        // speed three mixes can be on the road at once.
+        for world in WorldKind.allCases {
+            stock("low-\(world)", 9) { makeLowThing(world) }
         }
     }
 
@@ -862,13 +898,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             if jump() { jumpBuffer = 0 }
         }
         updateSteer(dt: dt)
-        cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt)
+        duckTimer = max(0, duckTimer - dt)
+        cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt, ducking: duckTimer > 0)
         homeBlend = max(0, homeBlend - dt / 0.9)
         updateRide()
         moveItems(dz: dz, dt: dt)
         resolveContacts(dz: dz)
         guard state == .running else { return }
         updateCamera(dt: dt)
+        updateDuckHint()
 
         dust.birthRate = height < 0.05 || (onPlatform && height - roofY < 0.05) ? 22 : 0
 
@@ -921,6 +959,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 vy = 0
                 jumping = false
             }
+        }
+
+        if duckQueued && !jumping && height - floorY < 0.05 {
+            duckQueued = false
+            startDuck()
         }
 
         let airborne = height - floorY > 0.15
@@ -1001,9 +1044,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     // MARK: - Spawning
 
     // Every mix follows one fairness rule: each lane can be survived by staying in it
-    // and jumping at the right time. Two things in the same lane are at least 19 m
-    // apart (about 1.1 s), so she can land and jump again. The test pilot only jumps
-    // and never steers, so it should live forever on any mix.
+    // and jumping or ducking at the right time. Two things in the same lane are at least 19 m
+    // apart (about 1.1 s), so she can land and jump or duck again. The test pilot
+    // only jumps and ducks and never steers, so it should live forever on any mix.
+    // Low things (d) never sit beside the middle of a tree, where a rider stepping
+    // off would drop right into one.
 
     private static func c(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .coyote, lane: lane, ahead: ahead) }
     private static func f(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead) }
@@ -1011,6 +1056,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private static func t(_ lane: Int, _ ahead: Float, _ length: Float? = nil) -> Spawn {
         Spawn(kind: .tree, lane: lane, ahead: ahead, length: length)
     }
+    private static func d(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .low, lane: lane, ahead: ahead) }
 
     private static let waves: [Wave] = [
         // Easy: one thing to do at a time.
@@ -1035,6 +1081,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 1, spawns: [t(1, 0, 17), c(0, 8), c(2, 8)]),
         // Jump the coyote, land, then jump up onto the tree.
         Wave(tier: 1, spawns: [c(1, 0), t(1, 19, 14), roof(1, 25), roof(1, 28)]),
+        // Ducking joins here, so the first 15 s only ask for jumps.
+        Wave(tier: 1, spawns: [d(1, 0)], weight: 1.3),
+        // Food just past a low thing: the reward for ducking.
+        Wave(tier: 1, spawns: [d(1, 0), f(1, 6), f(1, 9), f(1, 12)]),
+        Wave(tier: 1, spawns: [d(0, 0), d(1, 0), f(2, 0), f(2, 3), f(2, 6)]),
+        Wave(tier: 1, spawns: [d(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
 
         // Hard: back-to-back moves.
         // Three coyotes is a forced jump. Rare, per the PRD.
@@ -1047,7 +1099,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 2, spawns: [c(0, 0), c(2, 10), c(1, 20), c(0, 30)]),
         // A staircase of trees you can hop up the whole way.
         Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 10, 14), t(2, 20, 14)], rotates: false),
-        Wave(tier: 2, spawns: [c(1, 0), c(1, 19), c(1, 38), f(0, 8), f(0, 11), f(2, 27), f(2, 30)])
+        Wave(tier: 2, spawns: [c(1, 0), c(1, 19), c(1, 38), f(0, 8), f(0, 11), f(2, 27), f(2, 30)]),
+        // Three low things is a forced duck, as rare as the three-coyote wall.
+        Wave(tier: 2, spawns: [d(0, 0), d(1, 0), d(2, 0)], weight: 0.4),
+        // Jump, duck, jump.
+        Wave(tier: 2, spawns: [c(1, 0), d(1, 19), c(1, 38), f(0, 10), f(2, 28)]),
+        // Every lane flips: jump or duck now, then the other one.
+        Wave(tier: 2, spawns: [d(0, 0), c(1, 0), d(2, 0), c(0, 19), d(1, 19), c(2, 19)]),
+        Wave(tier: 2, spawns: [t(0, 0, 17), d(1, 0), c(2, 0), d(2, 19)], rotates: false)
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
@@ -1056,6 +1115,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Picks a mix for this point in the run: easy ones fade out, harder ones fade in.
     private func pickWave() -> Int {
+        if let forced = e2eWave, Self.waves.indices.contains(forced) { return forced }
         let tierWeight: [Float] = [
             max(0.25, 1 - 1.2 * ramp),
             ramp >= 0.15 ? min(1, 0.3 + ramp) : 0,
@@ -1127,9 +1187,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             node = takeNode("food") { self.makeFood() }
         case .tree:
             node = takeNode("tree\(Int(length))") { self.makeCatTree(length: length) }
+        case .low:
+            // A scaffold in the city, a log in the jungle: whichever world the
+            // road is in where it appears, far ahead.
+            let world = worldAt(z: z)
+            node = takeNode("low-\(world)") { self.makeLowThing(world) }
         }
         let item = TrackItem(kind: kind, lane: lane, node: node, z: z)
-        item.length = length
+        item.length = kind == .low ? Self.lowDepth : length
         item.picture = picture
         item.frame = Int.random(in: 0..<4)
         node.position = SCNVector3(laneX(lane), onRoof ? roofY + 0.05 : 0, z)
@@ -1338,6 +1403,177 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return root
     }
 
+    // MARK: - Low things
+
+    /// How deep a low thing is, front to back. The table is the deepest.
+    private static let lowDepth: Float = 1.1
+    /// Posts stand just inside the lane edges, so the cart fits between them.
+    private let lowPostX: Float = 0.9
+
+    /// Low-thing materials, made once and shared by every copy, so building a
+    /// spare one never uploads a texture or compiles a shader.
+    private var lowMaterials: [String: SCNMaterial] = [:]
+
+    private func flatMaterial(_ key: String, _ color: UIColor, image: @autoclosure () -> UIImage? = nil,
+                              tweak: (SCNMaterial) -> Void = { _ in }) -> SCNMaterial {
+        if let m = lowMaterials[key] { return m }
+        let m = SCNMaterial()
+        m.diffuse.contents = image() ?? color
+        Self.smoothSampling(m.diffuse)
+        m.lightingModel = .lambert
+        m.isDoubleSided = true
+        tweak(m)
+        lowMaterials[key] = m
+        return m
+    }
+
+    private func box(_ w: Float, _ h: Float, _ l: Float, _ m: SCNMaterial, at p: SCNVector3, round: CGFloat = 0.02) -> SCNNode {
+        let b = SCNBox(width: CGFloat(w), height: CGFloat(h), length: CGFloat(l), chamferRadius: round)
+        b.materials = [m]
+        let n = SCNNode(geometry: b)
+        n.position = p
+        return n
+    }
+
+    /// Something low across one lane, front edge at z = 0. Its underside is at
+    /// lowClearance with nothing under it down to the road, so the gap reads as
+    /// "go under". Pieces are merged into one mesh, like the cat tree.
+    private func makeLowThing(_ world: WorldKind) -> SCNNode {
+        let root = SCNNode()
+        let parts = SCNNode()
+        let u = lowClearance
+        let px = lowPostX
+        switch world {
+        case .city:
+            // Construction scaffold: steel poles on feet, a striped plank across.
+            let steel = flatMaterial("steel", UIColor(white: 0.62, alpha: 1))
+            let stripes = flatMaterial("stripes", .orange, image: Self.drawStripes()) {
+                $0.diffuse.contentsTransform = SCNMatrix4MakeScale(2.5, 1, 1)
+                $0.diffuse.wrapS = .repeat
+            }
+            let top: Float = u + 0.32
+            for x in [-px, px] {
+                parts.addChildNode(box(0.1, top + 0.08, 0.1, steel, at: SCNVector3(x, (top + 0.08) / 2, -0.3)))
+                parts.addChildNode(box(0.34, 0.06, 0.5, steel, at: SCNVector3(x, 0.03, -0.3)))
+            }
+            parts.addChildNode(box(2 * px + 0.2, 0.3, 0.16, stripes, at: SCNVector3(0, u + 0.15, -0.15)))
+            // A second rail behind, so it looks built, not balanced.
+            parts.addChildNode(box(2 * px, 0.08, 0.08, steel, at: SCNVector3(0, top, -0.5)))
+            let amber = flatMaterial("amber", UIColor(red: 1.0, green: 0.62, blue: 0.1, alpha: 1)) {
+                $0.emission.contents = UIColor(red: 0.9, green: 0.45, blue: 0.0, alpha: 1)
+            }
+            let lamp = SCNSphere(radius: 0.08)
+            lamp.materials = [amber]
+            let lampNode = SCNNode(geometry: lamp)
+            lampNode.position = SCNVector3(px, top + 0.16, -0.3)
+            parts.addChildNode(lampNode)
+
+        case .jungle:
+            // A mossy log lying across two tall stumps.
+            let bark = flatMaterial("bark", UIColor(red: 0.42, green: 0.27, blue: 0.16, alpha: 1))
+            let ring = flatMaterial("ring", UIColor(red: 0.85, green: 0.68, blue: 0.45, alpha: 1))
+            let moss = flatMaterial("moss", UIColor(red: 0.38, green: 0.62, blue: 0.22, alpha: 1))
+            for x in [-px, px] {
+                let stump = SCNCone(topRadius: 0.16, bottomRadius: 0.24, height: CGFloat(u))
+                stump.materials = [bark, ring, bark]
+                let n = SCNNode(geometry: stump)
+                n.position = SCNVector3(x, u / 2, -0.4)
+                parts.addChildNode(n)
+            }
+            let r: Float = 0.22
+            let log = SCNCylinder(radius: CGFloat(r), height: CGFloat(2 * px + 0.5))
+            log.materials = [bark, ring, ring]
+            let logNode = SCNNode(geometry: log)
+            logNode.eulerAngles.z = .pi / 2
+            logNode.position = SCNVector3(0, u + r, -0.4)
+            parts.addChildNode(logNode)
+            for (x, sx) in [(-0.6, 0.32), (0.05, 0.42), (0.7, 0.3)] as [(Float, Float)] {
+                let blob = SCNSphere(radius: 1)
+                blob.segmentCount = 10
+                blob.materials = [moss]
+                let n = SCNNode(geometry: blob)
+                n.scale = SCNVector3(sx, 0.09, 0.2)
+                n.position = SCNVector3(x, u + 2 * r - 0.02, -0.4)
+                parts.addChildNode(n)
+            }
+
+        case .house:
+            // A wooden table with a gingham cloth. The cloth's hem is the low edge.
+            let wood = flatMaterial("wood", UIColor(red: 0.62, green: 0.40, blue: 0.22, alpha: 1))
+            let cloth = flatMaterial("gingham", .red, image: Self.drawGingham()) {
+                $0.diffuse.wrapS = .repeat
+                $0.diffuse.wrapT = .repeat
+                $0.diffuse.contentsTransform = SCNMatrix4MakeScale(3, 3, 1)
+            }
+            let depth = Self.lowDepth
+            let hem: Float = 0.2
+            let top = u + hem
+            for x in [-px + 0.08, px - 0.08] {
+                for z in [-0.12, -depth + 0.12] {
+                    parts.addChildNode(box(0.1, top, 0.1, wood, at: SCNVector3(x, top / 2, z)))
+                }
+            }
+            parts.addChildNode(box(2 * px, 0.08, depth, wood, at: SCNVector3(0, top + 0.04, -depth / 2)))
+            parts.addChildNode(box(2 * px + 0.08, 0.025, depth + 0.08, cloth, at: SCNVector3(0, top + 0.09, -depth / 2), round: 0))
+            // Hems drape over the front and back edges.
+            for z in [0.03, -depth - 0.03] {
+                parts.addChildNode(box(2 * px + 0.08, hem, 0.02, cloth, at: SCNVector3(0, top + 0.1 - hem / 2, z), round: 0))
+            }
+            // A mug and a little vase so it reads as a table at a glance.
+            let mug = SCNCylinder(radius: 0.09, height: 0.18)
+            mug.materials = [flatMaterial("mug", UIColor(red: 0.98, green: 0.96, blue: 0.9, alpha: 1))]
+            let mugNode = SCNNode(geometry: mug)
+            mugNode.position = SCNVector3(-0.45, top + 0.19, -0.5)
+            parts.addChildNode(mugNode)
+            let vase = SCNSphere(radius: 0.12)
+            vase.materials = [flatMaterial("vase", UIColor(red: 0.45, green: 0.72, blue: 0.85, alpha: 1))]
+            let vaseNode = SCNNode(geometry: vase)
+            vaseNode.position = SCNVector3(0.4, top + 0.21, -0.6)
+            parts.addChildNode(vaseNode)
+            let bloom = SCNSphere(radius: 0.09)
+            bloom.materials = [flatMaterial("bloom", UIColor(red: 1.0, green: 0.78, blue: 0.2, alpha: 1))]
+            let bloomNode = SCNNode(geometry: bloom)
+            bloomNode.position = SCNVector3(0.4, top + 0.45, -0.6)
+            parts.addChildNode(bloomNode)
+
+        case .farm:
+            // A clothesline on two T posts with a sheet hanging down to the low edge.
+            let post = flatMaterial("post", UIColor(red: 0.55, green: 0.40, blue: 0.26, alpha: 1))
+            let line = flatMaterial("line", UIColor(white: 0.95, alpha: 1))
+            let sheet = flatMaterial("sheet", .blue, image: Self.drawSheet())
+            let lineY = u + 0.72
+            for x in [-px, px] {
+                parts.addChildNode(box(0.12, lineY + 0.14, 0.12, post, at: SCNVector3(x, (lineY + 0.14) / 2, -0.2)))
+                parts.addChildNode(box(0.08, 0.08, 0.5, post, at: SCNVector3(x, lineY + 0.06, -0.2)))
+            }
+            let rope = SCNCylinder(radius: 0.015, height: CGFloat(2 * px))
+            rope.materials = [line]
+            let ropeNode = SCNNode(geometry: rope)
+            ropeNode.eulerAngles.z = .pi / 2
+            ropeNode.position = SCNVector3(0, lineY, -0.2)
+            parts.addChildNode(ropeNode)
+            let cloth = SCNPlane(width: CGFloat(2 * px - 0.25), height: CGFloat(lineY - u))
+            cloth.materials = [sheet]
+            let clothNode = SCNNode(geometry: cloth)
+            clothNode.position = SCNVector3(0, (lineY + u) / 2, -0.2)
+            parts.addChildNode(clothNode)
+            let pin = flatMaterial("pin", UIColor(red: 0.95, green: 0.85, blue: 0.6, alpha: 1))
+            for x in [-0.55, 0.0, 0.55] as [Float] {
+                parts.addChildNode(box(0.04, 0.12, 0.05, pin, at: SCNVector3(x, lineY - 0.02, -0.19), round: 0.01))
+            }
+        }
+        root.addChildNode(parts.flattenedClone())
+
+        // A soft dark strip on the road under it, like the tree's shadow.
+        let shade = SCNNode(geometry: groundPlane(width: CGFloat(2 * px + 0.3), length: CGFloat(Self.lowDepth + 0.6), material: shadowMaterial))
+        shade.position = SCNVector3(0, 0.025, -Self.lowDepth / 2)
+        shade.castsShadow = false
+        root.addChildNode(shade)
+
+        applyLook(to: root)
+        return root
+    }
+
     // MARK: - Contacts
 
     private func resolveContacts(dz: Float) {
@@ -1355,6 +1591,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 collect(item)
             case .coyote:
                 if isHighEnough { continue }
+                if !e2eGod {
+                    crash()
+                    return
+                }
+            case .low:
+                if isDucked {
+                    passedUnder()
+                    continue
+                }
                 if !e2eGod {
                     crash()
                     return
@@ -1402,6 +1647,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         state = .dead
         jumping = false
         onPlatform = false
+        duckTimer = 0
+        duckQueued = false
+        hideDuckHint()
         dust.birthRate = 0
         DispatchQueue.main.async {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -1539,7 +1787,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 if !jump() { jumpBuffer = jumpBufferTime }
             case (.running, .down):
                 jumpBuffer = 0
-                slamDown()
+                if !jumping && height - floorY < 0.05 {
+                    startDuck()
+                } else {
+                    slamDown()
+                    duckQueued = true
+                }
             default:
                 break
             }
@@ -1575,6 +1828,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     @discardableResult
     private func jump() -> Bool {
         guard !jumping, height - floorY < 0.1 else { return false }
+        // Jumping pops her straight out of a duck.
+        duckTimer = 0
+        duckQueued = false
         jumping = true
         vy = jumpSpeed
         haptic(.light)
@@ -1586,6 +1842,38 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         vy = min(vy, -16)
     }
 
+    private func startDuck() {
+        if duckTimer <= 0 { haptic(.soft) }
+        duckTimer = duckTime
+    }
+
+    /// Ducked under a low thing. The first time ever, the hint retires.
+    private func passedUnder() {
+        guard duckHintNeeded else { return }
+        duckHintNeeded = false
+        UserDefaults.standard.set(true, forKey: Self.duckedKey)
+        hideDuckHint()
+    }
+
+    /// Until she has ducked under one, a low thing coming up shows a one-line hint.
+    private func updateDuckHint() {
+        guard duckHintNeeded else { return }
+        // About two seconds out: long enough to read, short enough to tie to the thing.
+        let coming = items.contains { $0.kind == .low && $0.z > -runSpeed() * 2.2 && $0.z < 0.5 }
+        if coming && !duckHintShown {
+            duckHintShown = true
+            hud.showHint("Swipe down to duck!")
+        } else if !coming && duckHintShown {
+            hideDuckHint()
+        }
+    }
+
+    private func hideDuckHint() {
+        guard duckHintShown else { return }
+        duckHintShown = false
+        hud.hideHint()
+    }
+
     /// Test-only autopilot (CATCART_PILOT=1): jumps coyotes and hops onto trees,
     /// so screenshot runs show the real moves.
     private func pilot() {
@@ -1595,6 +1883,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 jump()
             } else if item.kind == .tree && !onPlatform && !jumping && item.z > -6 {
                 jump()
+            } else if item.kind == .low && !isDucked && item.z > -7 {
+                // The same swipe down a finger makes: duck now, or drop and duck.
+                enqueue(.down)
             }
         }
     }
@@ -1625,6 +1916,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         cameraLift = 0
         landSquash = 0
         jumpBuffer = 0
+        duckTimer = 0
+        duckQueued = false
         timeAlive = 0
         meters = 0
         food = 0
@@ -1731,6 +2024,49 @@ private extension GameScene {
             let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
             ctx.cgContext.drawRadialGradient(gradient, startCenter: CGPoint(x: 64, y: 64), startRadius: 0,
                                              endCenter: CGPoint(x: 64, y: 64), endRadius: 64, options: [])
+        }
+    }
+
+    /// Orange and white construction stripes, slanted.
+    static func drawStripes() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 128, height: 64)).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 128, height: 64))
+            UIColor(red: 1.0, green: 0.42, blue: 0.1, alpha: 1).setFill()
+            for i in stride(from: -64, to: 192, by: 64) {
+                let path = UIBezierPath()
+                path.move(to: CGPoint(x: i, y: 64))
+                path.addLine(to: CGPoint(x: i + 32, y: 64))
+                path.addLine(to: CGPoint(x: i + 64, y: 0))
+                path.addLine(to: CGPoint(x: i + 32, y: 0))
+                path.close()
+                path.fill()
+            }
+        }
+    }
+
+    /// Red and white tablecloth checks.
+    static func drawGingham() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+            UIColor(red: 0.88, green: 0.22, blue: 0.25, alpha: 0.55).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 32, height: 64))
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 32))
+        }
+    }
+
+    /// A pale blue sheet with soft stripes, darker toward its hem.
+    static func drawSheet() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 128, height: 128)).image { ctx in
+            UIColor(red: 0.78, green: 0.89, blue: 0.98, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 128, height: 128))
+            UIColor(red: 0.55, green: 0.74, blue: 0.93, alpha: 1).setFill()
+            for x in stride(from: 8, to: 128, by: 32) {
+                ctx.fill(CGRect(x: x, y: 0, width: 10, height: 128))
+            }
+            UIColor(red: 0.30, green: 0.50, blue: 0.80, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 112, width: 128, height: 16))
         }
     }
 

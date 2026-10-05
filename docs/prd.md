@@ -12,7 +12,7 @@ Working title: Cat Cart. Bundle: `com.rexchao.catcart`. iPhone only, portrait, o
 
 A portrait 3-lane endless runner, like Subway Surfers seen from behind the character.
 
-You are a round-faced lilac British Shorthair kitten, about six months old, sitting in a custom-fit La Croix 12-pack box with wheels. You roll down a path that keeps changing worlds. Coyotes come at you. Jump them. Cat trees sit in a lane like trains. Jump on and ride the top. Grab cans of wet food. Last as far as you can. Best distance is saved on the phone.
+You are a round-faced lilac British Shorthair kitten, about six months old, sitting in a custom-fit La Croix 12-pack box with wheels. You roll down a path that keeps changing worlds. Coyotes come at you. Jump them. Low things hang across a lane. Duck into the box to pass under. Cat trees sit in a lane like trains. Jump on and ride the top. Grab cans of wet food. Last as far as you can. Best distance is saved on the phone.
 
 It should feel easy to pick up in an ad, then fair once you are playing. One thumb. Swipe. No menus to learn before the first run.
 
@@ -49,6 +49,8 @@ In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the lo
 Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared teeth, amber eyes. Their faces move (snarl cycle). You jump over them. You do not land on them.
 
 Pots are gone. Do not bring them back unless Rex asks.
+
+Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city, a mossy log on two stumps in the jungle, a table with a red gingham cloth in the house, a clothesline with a blue sheet on the farm. Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Coyotes stay jump-only; there is no leaping coyote.
 
 Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
 
@@ -103,6 +105,14 @@ Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under 
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
+### Duck
+
+Swipe down on the ground and she ducks into the box for 0.8 s: her body squashes down inside the box, so only her ears, the top of her head, and her tail tip show over the rim. Then she pops back up with a little springy overshoot. Swipe down again while ducked to keep ducking. Swipe down in the air and she drops fast, then ducks the moment she lands. Swipe up while ducked and she pops straight into a jump. Lane changes keep the duck going. Ducking works on a tree roof too, but low things only stand on the ground lanes.
+
+A low thing in her lane crashes her unless she is ducked near the ground. Jumping into one is a crash. Ducking does not help against coyotes or a tree front.
+
+Until she has ducked under her first low thing, ever, a bobbing "Swipe down to duck!" line shows below the cart as one comes (about 2 s out). It retires for good after the first success (`duckedUnderOnce` in UserDefaults).
+
 ### Cat trees, like trains
 
 - A tree fills one lane for a stretch of depth.
@@ -114,16 +124,16 @@ Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 - Swipe into the side of a tree from the ground: bump off it and stay in your lane. No crash.
 - Jump from a tree to hop to another tree or to clear something.
 
-Never block all three lanes with no jump or ride out. Two trees plus a food lane is fine. Three coyotes is a forced jump, used rarely.
+Never block all three lanes with no jump, duck, or ride out. Two trees plus a food lane is fine. Three coyotes is a forced jump, and three low things a forced duck, both used rarely.
 
 ### Getting harder
 
 Like Subway Surfers: easy to start, harder the longer you last, and still fair at top speed.
 
 - One difficulty ramp drives everything: speed, gaps, the jump, and which obstacle mixes show up.
-- The first 15 s or so are easy mixes only: one coyote, one tree, food lines. Medium mixes (two busy lanes, short slaloms, coyote then tree) join at about 15 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, the rare three-coyote wall) join at about 40 s. Easy mixes thin out but never vanish.
+- The first 15 s or so are easy mixes only: one coyote, one tree, food lines. Medium mixes (two busy lanes, short slaloms, coyote then tree, and the first low things to duck) join at about 15 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip between jump and duck, the rare three-coyote wall and three-low-thing wall) join at about 40 s. Easy mixes thin out but never vanish.
 - Spacing is in time, not meters. A mix plays out the same at any speed, and the breather between mixes shrinks from 1.75 s to 1.05 s.
-- Fairness rule: every lane of every mix can be survived by staying in it and jumping. Two things in one lane are at least about 1.1 s apart. Steering is the easier way through, never the only way.
+- Fairness rule: every lane of every mix can be survived by staying in it and jumping or ducking. Two things in one lane are at least about 1.1 s apart. Steering is the easier way through, never the only way. Low things never stand beside the middle of a tree, where a rider stepping off would drop into one.
 - Cat trees get longer as speed rises, so a ride lasts about the same time.
 
 ### Coyotes
@@ -150,7 +160,7 @@ Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. 
 |---|---|
 | Swipe left / right | Change lane |
 | Swipe up | Jump |
-| Swipe down | Land now |
+| Swipe down | Duck into the box; in the air, land now and duck on landing |
 | Tap on the home screen or death panel | Start a run |
 
 One finger. No on-screen buttons during the run. No tilt steering.
@@ -194,6 +204,7 @@ This is the live game, not a wish list.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
+- Duck into the box with a swipe down. One low thing per world to duck under, from about 15 s. A one-time hint teaches it.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
 - Home screen facing her, swoop into the run. HUD pills, death panel.
@@ -255,6 +266,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. Pilot without god mode is the fairness check: it only jumps, so if it crashes, a mix broke the rule above (the crash prints to the console with the mix number).
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). Pilot without god mode is the fairness check: it only jumps and ducks, never steers, so if it crashes, a mix broke the rule above (the crash prints to the console with the mix number).
 
 If you add a mechanic, write the player-facing rule here in the same commit.

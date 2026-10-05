@@ -21,6 +21,7 @@ final class Hud: SKScene {
     private var dim: SKSpriteNode!
     private var flash: SKSpriteNode!
     private var lines: SKNode!
+    private var hint: SKNode?
     private var topSafe: CGFloat = 54
     private var shownMeters = -1
     private var shownFood = -1
@@ -504,6 +505,35 @@ final class Hud: SKScene {
             path.lineWidth = line
             path.stroke()
         }
+    }
+
+    // MARK: - Hint
+
+    /// One line of big type low on the screen, for a move the player hasn't
+    /// learned yet. It bobs gently so it's noticed without covering the road.
+    func showHint(_ text: String) {
+        hideHint()
+        let node = SKNode()
+        node.zPosition = 30
+        // Below the cart, so it never covers her or the road ahead.
+        node.position = CGPoint(x: size.width / 2, y: size.height * 0.13)
+        let label = boldText(text, size: 30, fill: .white, lowerFill: icy, outlineWidth: 4, drop: 3)
+        fit(label, maxWidth: size.width - 40)
+        node.addChild(label)
+        node.alpha = 0
+        node.setScale(0.8)
+        addChild(node)
+        node.run(.group([.fadeIn(withDuration: 0.2), .scale(to: 1, duration: 0.2)]))
+        let bob = SKAction.moveBy(x: 0, y: -10, duration: 0.4)
+        bob.timingMode = .easeInEaseOut
+        node.run(.repeatForever(.sequence([bob, bob.reversed()])))
+        hint = node
+    }
+
+    func hideHint() {
+        guard let node = hint else { return }
+        hint = nil
+        node.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
     }
 
     // MARK: - Effects
