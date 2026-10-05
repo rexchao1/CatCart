@@ -20,6 +20,7 @@ Asked by Rex on 2026-10-04. Builds on `difficulty.md` (the ramp and tiers) and `
 - Score has no multiplier.
 - Glancing hits are stumbles, not crashes. The chaser is a green plastic spray bottle.
 - Top speed goes up a little, and the ramp reaches it a little sooner.
+- No steering test autopilot (Rex: overengineering). Each new mix is checked by hand against the fairness rule, and Rex plays it. The existing pilot stays as is for screenshots.
 - Not doing: a measuring harness with a human-like bot, crash logging, a solver that proves fairness, intensity tied to worlds, extra input buffering, or moving the medium and hard mixes earlier.
 
 ## Rules
@@ -59,13 +60,12 @@ Asked by Rex on 2026-10-04. Builds on `difficulty.md` (the ramp and tiers) and `
 
 ## Done when
 
-- The old pilot that never steers dies within about a minute from the start.
-- A pilot that steers, jumps, and ducks survives 60+ s from the start and at top speed (`CATCART_TIME=200`) with crashes on.
+- Every mix is checked by hand against the fairness rule, and each new one is seen at top speed with `CATCART_WAVE` and `CATCART_TIME=200`.
+- Rex finds it hard and fair on his phone.
 - A stumble brings the spray bottle, a second one while it chases is a crash, and a single stumble is survivable.
 - The score shows during the run, on the death panel, and as the best on the home screen.
 - No new hitches with `CATCART_PERF=1`.
 - The PRD describes the new fairness rule, stumbles, the bottle, the score, and the new speeds.
-- Played by hand by Rex on his phone.
 
 ## Steps
 
@@ -74,7 +74,7 @@ Asked by Rex on 2026-10-04. Builds on `difficulty.md` (the ramp and tiers) and `
 | 1 | Speed 17 to 34 over about 2.5 min; mix spacing grows slower than speed; tier entry pinned to 15 s and 40 s | not started |
 | 2 | Tighter timing: coyotes get a body length, the clear part of a jump gets shorter, a sliding cart counts in both lanes | not started |
 | 3 | Stumbles and the spray bottle: model built in code, hop-along chase, second stumble catches her | not started |
-| 4 | Mixes that need steering, food on the risky line, new fairness rule; the pilot learns to steer | not started |
+| 4 | Mixes that need steering, food on the risky line, new fairness rule, each mix checked by hand | not started |
 | 5 | No breather between mixes in the hard tier, so they chain | not started |
 | 6 | Score in the heads-up display, death panel, home screen, and saved best | not started |
-| 7 | Simulator check: both pilots, perf log, screenshots of the bottle and the score; PRD update | not started |
+| 7 | Simulator check: new mixes at top speed, perf log, screenshots of the bottle and the score; PRD update | not started |
