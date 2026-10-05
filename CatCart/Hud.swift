@@ -1,7 +1,7 @@
 import SpriteKit
 import UIKit
 
-// The flat layer drawn on top of the 3D world: the two pills, the home screen,
+// The flat layer drawn on top of the 3D world: the score and food pills, the home screen,
 // the "Oh no!" panel, the crash flash, and a few light speed lines.
 // SceneKit draws this SpriteKit scene over every frame (SCNView.overlaySKScene).
 //
@@ -12,9 +12,9 @@ import UIKit
 
 final class Hud: SKScene {
 
-    private var metersChip: SKSpriteNode!
+    private var scoreChip: SKSpriteNode!
     private var foodChip: SKSpriteNode!
-    private var metersLabel: SKLabelNode!
+    private var scoreLabel: SKLabelNode!
     private var foodLabel: SKLabelNode!
     private var panel: SKNode!
     private var home: SKNode!
@@ -23,7 +23,7 @@ final class Hud: SKScene {
     private var lines: SKNode!
     private var hint: SKNode?
     private var topSafe: CGFloat = 54
-    private var shownMeters = -1
+    private var shownScore = -1
     private var shownFood = -1
 
     private let ink = SKColor(red: 0.16, green: 0.30, blue: 0.46, alpha: 1)
@@ -46,12 +46,12 @@ final class Hud: SKScene {
         lines.zPosition = 5
         addChild(lines)
 
-        metersChip = makeChip()
+        scoreChip = makeChip()
         foodChip = makeChip()
-        metersLabel = makeLabel()
+        scoreLabel = makeLabel()
         foodLabel = makeLabel()
-        [metersChip, foodChip].forEach { addChild($0) }
-        [metersLabel, foodLabel].forEach { addChild($0) }
+        [scoreChip, foodChip].forEach { addChild($0) }
+        [scoreLabel, foodLabel].forEach { addChild($0) }
 
         // Darkens the world behind the crash panel so the panel pops.
         dim = SKSpriteNode(color: navy, size: size)
@@ -96,9 +96,9 @@ final class Hud: SKScene {
         self.topSafe = max(topSafe, 54)
         let y = size.height - self.topSafe - 28
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        metersChip.position = CGPoint(x: size.width * 0.28, y: y)
+        scoreChip.position = CGPoint(x: size.width * 0.28, y: y)
         foodChip.position = CGPoint(x: size.width * 0.74, y: y)
-        metersLabel.position = CGPoint(x: size.width * 0.28 - 28, y: y)
+        scoreLabel.position = CGPoint(x: size.width * 0.28 - 28, y: y)
         foodLabel.position = CGPoint(x: size.width * 0.74 - 28, y: y)
         panel.position = CGPoint(x: size.width / 2, y: size.height * 0.62)
         flash.size = size
@@ -116,16 +116,16 @@ final class Hud: SKScene {
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
-        guard metersChip != nil else { return }
+        guard scoreChip != nil else { return }
         layout(topSafe: topSafe)
     }
 
     // MARK: - Pills
 
-    func setMeters(_ meters: Int) {
-        guard meters != shownMeters else { return }
-        shownMeters = meters
-        metersLabel.text = "\(meters) m"
+    func setScore(_ score: Int) {
+        guard score != shownScore else { return }
+        shownScore = score
+        scoreLabel.text = score.formatted()
     }
 
     func setFood(_ food: Int) {
@@ -145,7 +145,7 @@ final class Hud: SKScene {
     }
 
     private func setPillsHidden(_ hidden: Bool) {
-        for node in [metersChip, foodChip, metersLabel, foodLabel] as [SKNode] {
+        for node in [scoreChip, foodChip, scoreLabel, foodLabel] as [SKNode] {
             node.removeAllActions()
             if hidden {
                 node.alpha = 0
@@ -158,7 +158,7 @@ final class Hud: SKScene {
     // MARK: - Home
 
     /// The title screen: big name up top, the kitten in the middle (that's the 3D
-    /// scene), and a paw button with the best distance at the bottom.
+    /// scene), and a paw button with the best score at the bottom.
     func showHome(best: Int) {
         panel.removeAllChildren()
         panel.isHidden = true
@@ -235,7 +235,7 @@ final class Hud: SKScene {
 
     // MARK: - Crash panel
 
-    func showDead(meters: Int, food: Int, best: Int, newBest: Bool) {
+    func showDead(score: Int, food: Int, best: Int, newBest: Bool) {
         panel.removeAllChildren()
         panel.isHidden = false
         // The panel shows the numbers now, so the pills step aside.
@@ -250,7 +250,7 @@ final class Hud: SKScene {
 
         // Two big numbers side by side, with a thin line between.
         let column = width * 0.22
-        for (x, value, word) in [(-column, "\(meters)", meters == 1 ? "meter" : "meters"),
+        for (x, value, word) in [(-column, score.formatted(), "score"),
                                  (column, "\(food)", "food")] {
             let number = textSprite(value, size: 48, weight: .black, color: ink)
             fit(number, maxWidth: column * 1.7)
@@ -372,11 +372,11 @@ final class Hud: SKScene {
         return node
     }
 
-    /// "BEST 882 m" with the word small and the number big.
+    /// "BEST 8,820" with the word small and the number big.
     private func bestRow(_ best: Int, valueSize: CGFloat) -> SKNode {
         let row = SKNode()
         let word = textSprite("BEST", size: valueSize * 0.6, weight: .heavy, color: softInk)
-        let value = textSprite("\(best) m", size: valueSize, weight: .black, color: ink)
+        let value = textSprite(best.formatted(), size: valueSize, weight: .black, color: ink)
         let gap: CGFloat = 8
         let total = word.size.width + gap + value.size.width
         word.anchorPoint.x = 0

@@ -1,5 +1,7 @@
 # Plan: a run that gets harder and stays fair
 
+Superseded in part by `challenge.md` (2026-10-04): top speed 34 over 2.5 min, spacing that shrinks in time, blocked lanes that require steering, and chained mixes. The ramp and tier design below still applies.
+
 Goal: like Subway Surfers, a run starts gentle, speeds up, and throws harder obstacle mixes the longer you last, while staying playable at top speed.
 
 Asked by Rex on 2026-10-03.

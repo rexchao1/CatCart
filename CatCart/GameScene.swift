@@ -40,6 +40,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private enum Intent {
         case tap, left, right, up, down
+        /// Test-only: a stumble from CATCART_SWIPES, to see the bottle without aiming for a bump.
+        case stumble
     }
 
     /// One thing on the track. `z` is its front edge (the end nearest the cat).
@@ -53,6 +55,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var picture: SCNMaterial?
         var frame = 0
         var frameClock: Float = 0
+        /// Food hanging in the air, only reached by jumping.
+        var high = false
+        /// Already clipped her once (a stumble), so it can't clip her again.
+        var hit = false
         var back: Float { z - length }
 
         init(kind: Kind, lane: Int, node: SCNNode, z: Float) {
@@ -92,12 +98,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let ahead: Float
         /// Food that sits on a cat tree's roof.
         var onRoof = false
+        /// Food hanging at jump height, over a coyote.
+        var high = false
         /// A cat tree's length at 17 m/s. Nil picks 11, 14, or 17.
         var length: Float?
     }
 
     /// One obstacle mix. Easy mixes (tier 0) show up from the start, medium (1)
-    /// from about 15 s, hard (2) from about 40 s.
+    /// from 15 s, hard (2) from 40 s.
     private struct Wave {
         let tier: Int
         let spawns: [Spawn]
@@ -108,9 +116,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var rotates = true
     }
 
-    /// Best distance, saved on the phone. The 2D build counted "meters" about 7x faster
-    /// under the key "bestMeters", so the 3D build keeps real meters under a new key.
-    private static let bestKey = "bestMeters3D"
+    /// Best score, saved on the phone. Older builds saved a best distance under
+    /// "bestMeters" (2D) and "bestMeters3D"; the score doesn't carry those over.
+    private static let bestKey = "bestScore"
+    /// Score: a point per meter, plus this much for each can of wet food.
+    private static let foodPoints = 25
     /// Set once she has ducked under a low thing, so the duck hint stops showing.
     private static let duckedKey = "duckedUnderOnce"
 
@@ -131,14 +141,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let jumpPeak: Float = 1.9
     /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. It always peaks
     /// at 1.9 m. Takeoff to landing is 0.8 s at the start and quickens to about
-    /// 0.66 s at top speed, so a jump doesn't sail over half the road when it's fast.
-    private var jumpAirtime: Float { 0.8 - 0.14 * ramp }
+    /// 0.62 s at top speed, so a jump doesn't sail over half the road when it's fast.
+    private var jumpAirtime: Float { 0.8 - 0.18 * ramp }
     private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
     private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
     /// A swipe up this soon before landing is remembered and fires on touchdown.
     private let jumpBufferTime: Float = 0.18
     /// Above this height a coyote passes under you and a tree front is a landing, not a crash.
-    private let clearHeight: Float = 0.7
+    /// 0.8 m at the start, 1.0 m at top speed: the part of a jump that clears a coyote
+    /// shrinks from about three quarters of the airtime to about two thirds.
+    private var clearHeight: Float { 0.8 + 0.2 * ramp }
+    /// A coyote's body, nose to haunches, for contact. The model is 1.9 m with its
+    /// tail; the tail doesn't count.
+    private let coyoteLength: Float = 1.5
+    /// The stretch of road her cart covers, either side of z = 0. A coyote or low
+    /// thing touching this stretch in her lane is touching her.
+    private let catReach: Float = 0.4
     /// A swipe down on the ground sinks her into the box this long. Another swipe
     /// down while ducked starts the count again.
     private let duckTime: Float = 0.45
@@ -146,6 +164,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// ducked, only her eyes and ears show over the rim and she's about 1.25 m.
     private let lowClearance: Float = 1.38
     private let worldSeconds: Float = 10
+    /// After a stumble the spray bottle chases her this long. A second stumble
+    /// before it gives up and she's caught.
+    private let chaseTime: Float = 4
+    /// Where the bottle hops while it chases: just behind the cart, peeking up from
+    /// the bottom of the screen. Further back than `bottleGone` it's hidden.
+    private let bottleChaseZ: Float = 1.7
+    private let bottleGone: Float = 7
 
     private let cameraBase = SIMD3<Float>(0, 2.9, 4.4)
     private let cameraPitch: Float = -0.055
@@ -154,24 +179,29 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let homeEye = SIMD3<Float>(0.9, 1.6, -2.75)
     private let homeTarget = SIMD3<Float>(0, 0.9, 0.25)
 
-    /// How far into the run's difficulty we are, 0 at the start to 1 after three
-    /// minutes. It climbs fast early and settles, like Subway Surfers: 0.31 at 30 s,
-    /// 0.56 at 1 min, 0.89 at 2 min. Speed, gaps, the jump, and which obstacle
-    /// mixes can show up all read this one number.
+    /// How far into the run's difficulty we are, 0 at the start to 1 after two and a
+    /// half minutes. It climbs fast early and settles, like Subway Surfers: 0.36 at
+    /// 30 s, 0.64 at 1 min, 0.96 at 2 min. Speed, gaps, the jump, and how much the
+    /// obstacle mixes favor hard ones all read this one number.
     private var ramp: Float {
-        let x = min(1, timeAlive / 180)
+        let x = min(1, timeAlive / 150)
         return 1 - (1 - x) * (1 - x)
     }
 
-    /// Running speed in meters per second. 17 at the start, 30 at full ramp.
+    /// Running speed in meters per second. 17 at the start, 34 at full ramp
+    /// (about 23 at 30 s, 28 at 1 min, 33 at 2 min).
     private func runSpeed() -> Float {
-        17 + 13 * ramp
+        17 + 17 * ramp
     }
 
-    /// Distances inside an obstacle mix are written for 17 m/s. Stretching them by
-    /// this keeps their timing the same at any speed: a coyote 17 m behind another
-    /// is always about one second later.
-    private var spacingScale: Float { runSpeed() / 17 }
+    /// Distances inside an obstacle mix are written for 17 m/s. They stretch with
+    /// speed, but less than speed does (the 0.6 power), so the faster she goes, the
+    /// less time there is between things: 19 m between two coyotes is 1.1 s at the
+    /// start and about 0.85 s at top speed. That squeeze is most of what makes a
+    /// long run hard.
+    private var spacingScale: Float { pow(runSpeed() / 17, 0.6) }
+    /// Cat trees stretch fully with speed, so a ride lasts about the same time.
+    private var treeScale: Float { runSpeed() / 17 }
 
     // MARK: - Shaders
 
@@ -218,6 +248,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let fillNode = SCNNode()
     private var catShadow: SCNNode!
     private var dust: SCNParticleSystem!
+    /// The green spray bottle that chases her after a stumble.
+    private let bottle = SCNNode()
 
     private var segments: [Segment] = []
     private var segmentPool: [WorldKind: [Segment]] = [:]
@@ -327,6 +359,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// one-line hint shows as low things come.
     private var duckHintNeeded = !UserDefaults.standard.bool(forKey: GameScene.duckedKey)
     private var duckHintShown = false
+    /// Seconds the spray bottle has left to chase her. 0 means it's gone.
+    private var chaseTimer: Float = 0
+    /// A beat after a stumble when nothing can trip her again, so one bump that
+    /// lasts a few frames doesn't count twice.
+    private var stumbleGrace: Float = 0
+    /// True once the bottle has caught her: it hangs over her, spraying.
+    private var sprayed = false
+    private var bottleZ: Float = 9
+    private var bottleX: Float = 0
+    private var bottleClock: Float = 0
     /// 1 on the home screen, easing to 0 as the camera swoops behind her for the run.
     private var homeBlend: Float = 1
     private var homeClock: Float = 0
@@ -336,7 +378,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var timeAlive: Float = 0
     private var meters: Float = 0
     private var food = 0
-    private var bestMeters: Float = 0
+    private var bestScore = 0
+    private var score: Int { Int(meters) + food * Self.foodPoints }
     private var untilWave: Float = 30
     private var lastWave = -1
     private var lineClock: Float = 0
@@ -374,7 +417,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         self.hud = Hud(size: CGSize(width: 390, height: 844))
         self.scenery = SceneryLibrary()
         super.init()
-        bestMeters = Float(UserDefaults.standard.double(forKey: Self.bestKey))
+        bestScore = UserDefaults.standard.integer(forKey: Self.bestKey)
         switch ProcessInfo.processInfo.environment["CATCART_WORLD"]?.lowercased() {
         case "jungle": startWorld = 1
         case "house": startWorld = 2
@@ -386,6 +429,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         buildLights()
         buildPlayer()
         buildPuffs()
+        buildBottle()
         prewarmSegments()
         prewarmItems()
         resetTrack()
@@ -402,7 +446,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         view.isMultipleTouchEnabled = false
         prepareForRun(in: view)
 
-        hud.showHome(best: Int(bestMeters))
+        hud.showHome(best: bestScore)
         if e2eAutoRun {
             startRun()
             homeBlend = 0
@@ -415,11 +459,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Test-only: CATCART_SWIPES="2:left,3.5:up,5:right" plays swipes at those
     /// seconds after launch through the same touch code a finger uses.
+    /// "4:stumble" trips her as if she clipped something.
     private func scheduleTestSwipes() {
         guard let script = ProcessInfo.processInfo.environment["CATCART_SWIPES"] else { return }
         for step in script.split(separator: ",") {
             let parts = step.split(separator: ":")
             guard parts.count == 2, let at = Double(parts[0]) else { continue }
+            if parts[1] == "stumble" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in self?.enqueue(.stumble) }
+                continue
+            }
             let move: CGPoint
             switch parts[1] {
             case "left": move = CGPoint(x: -80, y: 0)
@@ -805,17 +854,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 itemPool[key, default: []].append(node)
             }
         }
-        stock("coyote", 10) { makeCoyote() }
-        stock("food", 16) { makeFood() }
+        // Chained hard mixes with blocked lanes can put a dozen coyotes on the road.
+        stock("coyote", 16) { makeCoyote() }
+        stock("food", 24) { makeFood() }
         for size in Self.treeSizes {
             // Four: the staircase mix uses three of one size, and the mix before
             // it can still have one on the road (a 333 ms stall at 60 s with three).
             stock("tree\(Int(size))", 4) { makeCatTree(length: size) }
         }
-        // The busiest mixes have three low things, all in one world, and at top
-        // speed three mixes can be on the road at once.
+        // The zigzag mix alone has four low things, all in one world, and from
+        // 40 s mixes chain with almost no gap.
         for world in WorldKind.allCases {
-            stock("low-\(world)", 9) { makeLowThing(world) }
+            stock("low-\(world)", 12) { makeLowThing(world) }
         }
     }
 
@@ -825,6 +875,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var objects: [Any] = Array(itemPool.values.joined())
         objects += segmentPool.values.joined().map(\.node)
         objects += Array(skyMaterials.values)
+        objects.append(bottle)
         let logging = frameLog.enabled
         let started = Date()
         view.prepare(objects) { done in
@@ -870,6 +921,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0)
             updateCamera(dt: dt)
         case .dead:
+            updateChase(dt: dt)
             updateCamera(dt: dt)
         }
     }
@@ -899,6 +951,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt, ducking: duckTimer > 0)
         homeBlend = max(0, homeBlend - dt / 0.9)
         updateRide()
+        updateChase(dt: dt)
         moveItems(dz: dz, dt: dt)
         resolveContacts(dz: dz)
         guard state == .running else { return }
@@ -912,7 +965,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             lineClock = 0.12
             hud.speedLine(strength: CGFloat(min(1, (speed - 12) / 14)))
         }
-        hud.setMeters(Int(meters))
+        hud.setScore(score)
         hud.setFood(food)
     }
 
@@ -927,7 +980,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         cameraNode.position = SCNVector3(x, y, cameraBase.z)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, -tilt * 0.08)
         // A slightly wider view as the run speeds up.
-        let boost = CGFloat(max(0, runSpeed() - 17) * 0.45)
+        let boost = CGFloat(max(0, runSpeed() - 17) * 0.35)
         cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0)
 
         // Home screen, or the swoop from it: mix toward the front view of her face.
@@ -1035,20 +1088,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     // MARK: - Spawning
 
-    // Every mix follows one fairness rule: each lane can be survived by staying in it
-    // and jumping or ducking at the right time. Two things in the same lane are at least 19 m
-    // apart (about 1.1 s), so she can land and jump or duck again. The test pilot
-    // only jumps and ducks and never steers, so it should live forever on any mix.
+    // Every mix follows one fairness rule: there's always a way through, and time to
+    // steer to it. Some lanes can't be survived by staying in them (a coyote under a
+    // low thing), so steering matters, like Subway Surfers. Never all three lanes
+    // blocked with no jump, duck, or ride out. Inside a mix, two things in the same
+    // lane are at least 19 m apart (written at 17 m/s), so she can land and jump or
+    // duck again. A low thing after a coyote gets 24 m, since ducking is its own swipe.
     // Low things (d) never sit beside the middle of a tree, where a rider stepping
-    // off would drop right into one.
+    // off would drop right into one. spawnWave keeps the same gaps where one mix
+    // meets the next. Check a new mix against this by hand before adding it.
 
     private static func c(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .coyote, lane: lane, ahead: ahead) }
     private static func f(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead) }
     private static func roof(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead, onRoof: true) }
+    /// Food in the air: you only get it by jumping.
+    private static func air(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .food, lane: lane, ahead: ahead, high: true) }
     private static func t(_ lane: Int, _ ahead: Float, _ length: Float? = nil) -> Spawn {
         Spawn(kind: .tree, lane: lane, ahead: ahead, length: length)
     }
     private static func d(_ lane: Int, _ ahead: Float) -> Spawn { Spawn(kind: .low, lane: lane, ahead: ahead) }
+    /// A blocked lane: a coyote prowling under a low thing. Jump and you hit the
+    /// low thing, duck and you hit the coyote. The only way past is to steer.
+    private static func b(_ lane: Int, _ ahead: Float) -> [Spawn] { [c(lane, ahead), d(lane, ahead)] }
 
     private static let waves: [Wave] = [
         // Easy: one thing to do at a time.
@@ -1061,6 +1122,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 0, spawns: [f(0, 0), f(1, 4), f(2, 8)]),
         Wave(tier: 0, spawns: [f(1, 0), f(1, 3), f(1, 6), f(1, 9), f(1, 12)]),
         Wave(tier: 0, spawns: [c(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
+        // Food over a coyote: jump it to eat.
+        Wave(tier: 0, spawns: [c(1, 3), air(1, 0), air(1, 3), air(1, 6)]),
 
         // Medium: two lanes busy, or a short slalom.
         Wave(tier: 1, spawns: [c(0, 0), c(1, 0), f(2, 0), f(2, 3)]),
@@ -1079,6 +1142,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 1, spawns: [d(1, 0), f(1, 6), f(1, 9), f(1, 12)]),
         Wave(tier: 1, spawns: [d(0, 0), d(1, 0), f(2, 0), f(2, 3), f(2, 6)]),
         Wave(tier: 1, spawns: [d(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
+        // The first blocked lanes: steer around, with food on the open side.
+        Wave(tier: 1, spawns: b(1, 0) + [f(0, 0), f(0, 3), f(0, 6)], weight: 1.3),
+        Wave(tier: 1, spawns: b(0, 0) + [c(1, 0), f(2, 0), f(2, 3)]),
+        // Two coyotes close together: a double hop, with food in the air between.
+        Wave(tier: 1, spawns: [c(1, 0), c(1, 19), air(1, 9), air(1, 28), f(0, 6), f(2, 12)]),
 
         // Hard: back-to-back moves.
         // Three coyotes is a forced jump. Rare, per the PRD.
@@ -1099,7 +1167,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         Wave(tier: 2, spawns: [c(1, 0), d(1, 24), c(1, 43), f(0, 10), f(2, 33)]),
         // Every lane flips: jump or duck now, then the other one.
         Wave(tier: 2, spawns: [d(0, 0), c(1, 0), d(2, 0), c(0, 24), d(1, 24), c(2, 24)]),
-        Wave(tier: 2, spawns: [t(0, 0, 17), d(1, 0), c(2, 0), d(2, 24)], rotates: false)
+        Wave(tier: 2, spawns: [t(0, 0, 17), d(1, 0), c(2, 0), d(2, 24)], rotates: false),
+        // Both sides blocked: get to the middle and jump.
+        Wave(tier: 2, spawns: b(0, 0) + [c(1, 0)] + b(2, 0) + [f(1, 6), f(1, 9)], rotates: false),
+        // Every lane asks for something different: jump, steer, or duck.
+        Wave(tier: 2, spawns: [c(0, 0)] + b(1, 0) + [d(2, 0)]),
+        // A zigzag: the open lane jumps from one side to the other.
+        Wave(tier: 2, spawns: b(0, 0) + b(1, 0) + [f(2, 0), f(2, 3), f(2, 6)]
+                + b(1, 26) + b(2, 26) + [f(0, 26), f(0, 29), f(0, 32)], rotates: false),
+        // A gate: both sides blocked, a tree in the middle to ride through.
+        Wave(tier: 2, spawns: b(0, 0) + [t(1, 0, 14), roof(1, 5), roof(1, 8)] + b(2, 0), rotates: false),
+        // Blocked in front, then a coyote in the lane you steered to.
+        Wave(tier: 2, spawns: b(1, 0) + [c(0, 19), c(2, 19), air(0, 16), air(0, 19), air(0, 22)])
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
@@ -1111,8 +1190,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if let forced = e2eWave, Self.waves.indices.contains(forced) { return forced }
         let tierWeight: [Float] = [
             max(0.25, 1 - 1.2 * ramp),
-            ramp >= 0.15 ? min(1, 0.3 + ramp) : 0,
-            ramp >= 0.4 ? 1.3 * ramp : 0
+            timeAlive >= 15 ? min(1, 0.3 + ramp) : 0,
+            timeAlive >= 40 ? 1.3 * ramp : 0
         ]
         let choices = Self.waves.indices.filter { $0 != lastWave }
         let weights = choices.map { tierWeight[Self.waves[$0].tier] * Self.waves[$0].weight }
@@ -1136,38 +1215,66 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return mirror ? 2 - turned : turned
         }
         let scale = spacingScale
+        // Trees stretch with speed more than the rest of the mix does. Anything
+        // written behind a tree's end moves back by that extra length, so the road
+        // after a ride keeps its timing.
+        struct TreePlan { let spawn: Spawn; let lane: Int; let written: Float; let length: Float }
+        let trees: [TreePlan] = wave.spawns.filter { $0.kind == .tree }.map { spawn in
+            let written: Float = spawn.length ?? [11, 14, 17].randomElement() ?? 14
+            let stretched = written * treeScale
+            let length = Self.treeSizes.min { abs($0 - stretched) < abs($1 - stretched) } ?? written
+            return TreePlan(spawn: spawn, lane: place(spawn.lane), written: written, length: length)
+        }
+        func ahead(_ spawn: Spawn) -> Float {
+            var out = spawn.ahead * scale
+            for tree in trees where tree.spawn.ahead + tree.written <= spawn.ahead + 0.01 {
+                out += max(0, tree.length - tree.written * scale)
+            }
+            return out
+        }
+
+        // Where this mix meets the one before, keep the same gaps as inside a mix:
+        // 19 m from the end of the last thing in a lane to the next one, 24 m from a
+        // coyote to a low thing. If a lane is too close, the whole mix moves back.
+        var shift: Float = 0
+        for spawn in wave.spawns where spawn.kind != .food {
+            let lane = place(spawn.lane)
+            let front = spawnAhead + ahead(spawn)
+            for item in items where item.lane == lane && item.kind != .food {
+                let lastEnd = item.length - item.z
+                let gap: Float = (item.kind == .coyote && spawn.kind == .low ? 24 : 19) * scale
+                shift = max(shift, lastEnd + gap - front)
+            }
+        }
+
         var reach: Float = 0
         var treeEnd: [Int: Float] = [:]
-        for spawn in wave.spawns where spawn.kind == .tree {
-            let lane = place(spawn.lane)
-            // Trees stretch with speed too, so a ride lasts about the same time.
-            let base: Float = spawn.length ?? [11, 14, 17].randomElement() ?? 14
-            let stretched = base * scale
-            let length = Self.treeSizes.min { abs($0 - stretched) < abs($1 - stretched) } ?? base
-            let ahead = spawn.ahead * scale
-            treeEnd[lane] = ahead + length
-            addItem(.tree, lane: lane, z: -spawnAhead - ahead, length: length)
-            reach = max(reach, ahead + length)
+        for tree in trees {
+            let start = ahead(tree.spawn) + shift
+            treeEnd[tree.lane] = start + tree.length
+            addItem(.tree, lane: tree.lane, z: -spawnAhead - start, length: tree.length)
+            reach = max(reach, start + tree.length)
         }
         for spawn in wave.spawns where spawn.kind != .tree {
             let lane = place(spawn.lane)
             let onRoof = spawn.onRoof && treeEnd[lane] != nil
-            var ahead = spawn.ahead * scale
+            var at = ahead(spawn) + shift
             if onRoof, let end = treeEnd[lane] {
                 // Snapping the tree length can shorten it a little. Keep roof food on the roof.
-                ahead = min(ahead, end - 1.5)
+                at = min(at, end - 1.5)
             }
-            addItem(spawn.kind, lane: lane, z: -spawnAhead - ahead, onRoof: onRoof)
-            reach = max(reach, ahead)
+            addItem(spawn.kind, lane: lane, z: -spawnAhead - at, onRoof: onRoof, high: spawn.high)
+            reach = max(reach, at)
         }
-        // Breathing room after the wave, in seconds so it stays fair at any speed:
-        // 1.75 s at the start down to 1.05 s at top speed. That's always longer than
-        // a jump plus a moment to react.
-        let gapSeconds = 1.75 - 0.7 * ramp
+        // Breathing room after the mix, in seconds so it means the same at any speed:
+        // 1.75 s at the start, shrinking with the ramp. From 40 s, when hard mixes
+        // join, mixes chain: the gap drops to under a second and keeps shrinking to
+        // 0.4 s, and only the per-lane gaps above keep the joins fair.
+        let gapSeconds: Float = timeAlive >= 40 ? max(0.4, 1.05 - 0.65 * ramp) : 1.75 - 0.7 * ramp
         return reach + runSpeed() * gapSeconds
     }
 
-    private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, onRoof: Bool = false) {
+    private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, onRoof: Bool = false, high: Bool = false) {
         let node: SCNNode
         var picture: SCNMaterial?
         switch kind {
@@ -1187,10 +1294,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             node = takeNode("low-\(world)") { self.makeLowThing(world) }
         }
         let item = TrackItem(kind: kind, lane: lane, node: node, z: z)
-        item.length = kind == .low ? Self.lowDepth : length
+        switch kind {
+        case .low: item.length = Self.lowDepth
+        case .coyote: item.length = coyoteLength
+        default: item.length = length
+        }
         item.picture = picture
         item.frame = Int.random(in: 0..<4)
-        node.position = SCNVector3(laneX(lane), onRoof ? roofY + 0.05 : 0, z)
+        item.high = high
+        // Food in the air hangs where a jump's arc carries her, and drops its shadow.
+        node.childNode(withName: "shadow", recursively: false)?.isHidden = high
+        node.position = SCNVector3(laneX(lane), onRoof ? roofY + 0.05 : high ? 1.45 : 0, z)
         scene.rootNode.addChildNode(node)
         items.append(item)
     }
@@ -1268,7 +1382,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         // Real meshes need the same road bend and fog as every other object.
         applyLook(to: node)
-        node.addChildNode(shadowNode(width: 0.7, length: 0.55))
+        let shadow = shadowNode(width: 0.7, length: 0.55)
+        shadow.name = "shadow"
+        node.addChildNode(shadow)
         return node
     }
 
@@ -1573,52 +1689,210 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return root
     }
 
+    // MARK: - Spray bottle
+
+    /// A green plastic spray bottle, the thing every cat dreads. Built from simple
+    /// shapes: a tall bottle, a white neck, a trigger head with the nozzle pointed
+    /// at her. It stands about 1 m tall, so it peeks up behind the cart, and it's
+    /// turned side-on so the camera sees the trigger, not the back of the head.
+    private func buildBottle() {
+        let plastic = SCNMaterial()
+        plastic.diffuse.contents = UIColor(red: 0.20, green: 0.74, blue: 0.36, alpha: 1)
+        plastic.specular.contents = UIColor(white: 1, alpha: 0.9)
+        plastic.shininess = 40
+        plastic.lightingModel = .blinn
+        let label = SCNMaterial()
+        label.diffuse.contents = UIColor(red: 0.86, green: 0.97, blue: 0.88, alpha: 1)
+        label.lightingModel = .lambert
+        let white = SCNMaterial()
+        white.diffuse.contents = UIColor(white: 0.97, alpha: 1)
+        white.specular.contents = UIColor(white: 1, alpha: 0.6)
+        white.shininess = 25
+        white.lightingModel = .blinn
+        let dark = SCNMaterial()
+        dark.diffuse.contents = UIColor(red: 0.10, green: 0.42, blue: 0.20, alpha: 1)
+        dark.lightingModel = .lambert
+
+        let model = SCNNode()
+        // Flat-bottomed body, a sloped shoulder, then the neck.
+        let body = SCNNode(geometry: SCNCylinder(radius: 0.22, height: 0.6))
+        body.geometry?.materials = [plastic]
+        body.position = SCNVector3(0, 0.3, 0)
+        model.addChildNode(body)
+        let shoulder = SCNNode(geometry: SCNCone(topRadius: 0.09, bottomRadius: 0.22, height: 0.18))
+        shoulder.geometry?.materials = [plastic]
+        shoulder.position = SCNVector3(0, 0.69, 0)
+        model.addChildNode(shoulder)
+        // A pale band for the label, so it reads as a bottle, not a pickle.
+        let band = SCNNode(geometry: SCNCylinder(radius: 0.225, height: 0.24))
+        band.geometry?.materials = [label]
+        band.position = SCNVector3(0, 0.3, 0)
+        model.addChildNode(band)
+        let neck = SCNNode(geometry: SCNCylinder(radius: 0.1, height: 0.12))
+        neck.geometry?.materials = [white]
+        neck.position = SCNVector3(0, 0.84, 0)
+        model.addChildNode(neck)
+        // The trigger head, nozzle forward (toward -z, at her).
+        let head = SCNNode(geometry: SCNBox(width: 0.16, height: 0.18, length: 0.44, chamferRadius: 0.06))
+        head.geometry?.materials = [white]
+        head.position = SCNVector3(0, 0.98, -0.1)
+        model.addChildNode(head)
+        let nozzle = SCNNode(geometry: SCNCylinder(radius: 0.05, height: 0.1))
+        nozzle.geometry?.materials = [dark]
+        nozzle.eulerAngles.x = .pi / 2
+        nozzle.position = SCNVector3(0, 0.99, -0.35)
+        model.addChildNode(nozzle)
+        let trigger = SCNNode(geometry: SCNBox(width: 0.07, height: 0.24, length: 0.07, chamferRadius: 0.03))
+        trigger.geometry?.materials = [dark]
+        trigger.eulerAngles.x = -0.35
+        trigger.position = SCNVector3(0, 0.82, -0.24)
+        model.addChildNode(trigger)
+        model.scale = SCNVector3(0.95, 0.95, 0.95)
+        model.name = "model"
+        applyLook(to: model)
+        bottle.addChildNode(model)
+
+        let shadow = shadowNode(width: 0.8, length: 0.8)
+        shadow.position.z = 0
+        bottle.addChildNode(shadow)
+        bottle.isHidden = true
+        bottle.position = SCNVector3(0, 0, bottleZ)
+        scene.rootNode.addChildNode(bottle)
+    }
+
+    /// A glancing hit. The cart wobbles and the bottle comes after her. A second
+    /// one while it's still chasing and she's caught.
+    private func stumble(bounceBack: Bool) {
+        guard stumbleGrace <= 0 else { return }
+        stumbleGrace = 0.4
+        if bounceBack {
+            lane = bodyLane
+        }
+        if chaseTimer > 0 {
+            caught()
+            return
+        }
+        chaseTimer = chaseTime
+        tilt = Bool.random() ? 0.32 : -0.32
+        landSquash = 1
+        haptic(.heavy)
+        puff(at: SCNVector3(visualX, height + 0.2, 0.2), count: 14, color: UIColor(white: 0.95, alpha: 0.9))
+        shakeCamera()
+    }
+
+    /// Second stumble: the bottle catches up and sprays her. It's a crash.
+    private func caught() {
+        if e2eGod {
+            chaseTimer = chaseTime
+            return
+        }
+        sprayed = true
+        crash()
+        // A burst of mist over her head.
+        puff(at: SCNVector3(visualX, height + 1.5, 0.3), count: 40,
+             color: UIColor(red: 0.78, green: 0.92, blue: 1.0, alpha: 0.95))
+    }
+
+    /// Hops the bottle along behind her while it chases, drops it back when it
+    /// gives up, and leans it over her if it caught her.
+    private func updateChase(dt: Float) {
+        chaseTimer = max(0, chaseTimer - dt)
+        stumbleGrace = max(0, stumbleGrace - dt)
+        bottleClock += dt
+        let chasing = chaseTimer > 0 || sprayed
+        // In from behind the camera fast, back out a little slower.
+        let goal: Float = sprayed ? 1.0 : chasing ? bottleChaseZ : 9
+        bottleZ += (goal - bottleZ) * min(1, (chasing ? 6 : 2.5) * dt)
+        // A little off to one side, so the La Croix logo still shows.
+        let goalX = visualX + (sprayed ? 0.9 : 0.75)
+        bottleX += (goalX - bottleX) * min(1, 7 * dt)
+        bottle.isHidden = bottleZ > bottleGone
+        guard !bottle.isHidden else { return }
+        let hop = sprayed ? 0.25 : abs(sin(bottleClock * 9)) * 0.32
+        bottle.position = SCNVector3(bottleX, hop, bottleZ)
+        // Leans over her when it catches her, nozzle down at her head.
+        bottle.eulerAngles.z = sprayed ? 0.45 : 0
+        let model = bottle.childNode(withName: "model", recursively: false)
+        // Turned side-on, nozzle aimed in at her from her right, rocking as it hops.
+        model?.eulerAngles = SCNVector3(sprayed ? 0 : -0.12 + sin(bottleClock * 9) * 0.08, 1.0,
+                                        sprayed ? 0 : sin(bottleClock * 4.5) * 0.1)
+    }
+
     // MARK: - Contacts
 
+    /// The lane her body is really in. A swipe changes `lane` at once, but the cart
+    /// takes a moment to slide over, and until it crosses the line between lanes
+    /// she's still in the old one.
+    private var bodyLane: Int {
+        max(0, min(2, Int((visualX / laneSpacing).rounded()) + 1))
+    }
+
+    /// Is this coyote or low thing on the same stretch of road as her cart?
+    private func touchesCat(_ item: TrackItem) -> Bool {
+        item.z >= -catReach && item.back <= catReach
+    }
+
+    // Crash or stumble: running into something in the lane she's in and heading for
+    // is a crash. Clipping something mid-slide, in the lane she's leaving or the one
+    // she hasn't reached yet, is a glancing hit: a stumble. Clipping the lane ahead
+    // bounces her back to where she came from.
     private func resolveContacts(dz: Float) {
-        for item in items where item.lane == lane {
+        for item in items {
             let prevZ = item.z - dz
             if item.kind == .tree {
                 handleTree(item, prevZ: prevZ)
                 if state != .running { return }
                 continue
             }
-            let crossed = prevZ < 0 && item.z >= 0
-            guard crossed else { continue }
-            switch item.kind {
-            case .food:
+            if item.kind == .food {
+                guard item.lane == lane, prevZ < 0, item.z >= 0 else { continue }
+                // Food in the air is only reached high in a jump (or from a tree roof).
+                if item.high && height < 0.9 { continue }
                 collect(item)
-            case .coyote:
-                if isHighEnough { continue }
+                continue
+            }
+            let heading = item.lane == lane
+            let inside = item.lane == bodyLane
+            guard heading || inside, !item.hit, touchesCat(item) else { continue }
+            // A coyote is cleared by being high enough, a low thing by ducking.
+            // The whole time it's beside her, not just the moment it arrives.
+            if item.kind == .coyote && isHighEnough { continue }
+            if item.kind == .low && isDucked {
+                if heading { passedUnder() }
+                continue
+            }
+            if heading && inside {
                 if !e2eGod {
                     crash()
                     return
                 }
-            case .low:
-                if isDucked {
-                    passedUnder()
-                    continue
-                }
-                if !e2eGod {
-                    crash()
-                    return
-                }
-            case .tree:
-                break
+                item.hit = true
+            } else {
+                item.hit = true
+                stumble(bounceBack: heading)
+                if state != .running { return }
             }
         }
     }
 
     private func handleTree(_ item: TrackItem, prevZ: Float) {
+        let heading = item.lane == lane
+        let inside = item.lane == bodyLane
+        guard heading || inside else { return }
         let entered = prevZ < 0 && item.z >= 0
         guard entered || overlapsCat(item) else { return }
         if onPlatform { return }
         if isHighEnough {
-            mountTree()
+            if heading { mountTree() }
             return
         }
-        if entered, !e2eGod {
-            crash()
+        guard entered, !item.hit else { return }
+        if heading && inside {
+            if !e2eGod { crash() }
+        } else {
+            // The front of a tree caught the corner of the cart mid-slide.
+            item.hit = true
+            stumble(bounceBack: heading)
         }
     }
 
@@ -1631,7 +1905,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func collect(_ item: TrackItem) {
         food += 1
-        meters += 5
         let spot = SCNVector3(laneX(item.lane), item.node.position.y + 0.6, 0.2)
         recycle(item)
         items.removeAll { $0 === item }
@@ -1642,11 +1915,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func crash() {
         if e2ePilot {
             print("CATCART crash t=\(timeAlive) speed=\(runSpeed()) wave=\(lastWave) meters=\(Int(meters))")
+            fflush(stdout)
         }
         state = .dead
         jumping = false
         onPlatform = false
         duckTimer = 0
+        chaseTimer = 0
         hideDuckHint()
         dust.birthRate = 0
         DispatchQueue.main.async {
@@ -1660,12 +1935,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             .rotateBy(x: 0, y: 0, z: tilt >= 0 ? 0.9 : -0.9, duration: 0.25),
             .sequence([.moveBy(x: 0, y: 0.5, z: 0, duration: 0.12), .moveBy(x: 0, y: -0.5, z: 0, duration: 0.18)])
         ]), forKey: "tip")
-        let newBest = meters > bestMeters
+        let newBest = score > bestScore
         if newBest {
-            bestMeters = meters
-            UserDefaults.standard.set(Double(bestMeters), forKey: Self.bestKey)
+            bestScore = score
+            UserDefaults.standard.set(bestScore, forKey: Self.bestKey)
         }
-        hud.showDead(meters: Int(meters), food: food, best: Int(bestMeters), newBest: newBest)
+        hud.showDead(score: score, food: food, best: bestScore, newBest: newBest)
     }
 
     private func shakeCamera() {
@@ -1783,6 +2058,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 moveLane(1)
             case (.running, .up):
                 if !jump() { jumpBuffer = jumpBufferTime }
+            case (.running, .stumble):
+                stumble(bounceBack: false)
             case (.running, .down):
                 jumpBuffer = 0
                 // On the ground it's a duck. In the air it only brings her down.
@@ -1802,10 +2079,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         guard next != lane else { return }
         let treeThere = items.contains { $0.kind == .tree && $0.lane == next && overlapsCat($0) }
         if treeThere && !isHighEnough {
-            // Bumped the side of a cat tree from the ground: bounce back, stay in lane.
+            // Bumped the side of a cat tree from the ground: bounce back, stay in
+            // lane, and stumble.
             tilt = delta > 0 ? 0.12 : -0.12
             visualX += Float(delta) * 0.35
             haptic(.rigid)
+            stumble(bounceBack: false)
             return
         }
         if onPlatform && !treeThere {
@@ -1856,7 +2135,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func updateDuckHint() {
         guard duckHintNeeded else { return }
         // About two seconds out: long enough to read, short enough to tie to the thing.
-        let coming = items.contains { $0.kind == .low && $0.z > -runSpeed() * 2.2 && $0.z < 0.5 }
+        // Not for a blocked lane (a coyote under it): ducking there is a crash.
+        let coming = items.contains { low in
+            low.kind == .low && low.z > -runSpeed() * 2.2 && low.z < 0.5
+                && !items.contains { $0.kind == .coyote && $0.lane == low.lane && abs($0.z - low.z) < 0.5 }
+        }
         if coming && !duckHintShown {
             duckHintShown = true
             hud.showHint("Swipe down to duck!")
@@ -1915,12 +2198,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         landSquash = 0
         jumpBuffer = 0
         duckTimer = 0
+        chaseTimer = 0
+        stumbleGrace = 0
+        sprayed = false
+        bottleZ = 9
+        bottle.isHidden = true
         timeAlive = 0
         meters = 0
         food = 0
         placePlayer()
         resetTrack()
-        hud.setMeters(0)
+        hud.setScore(0)
         hud.setFood(0)
     }
 }
