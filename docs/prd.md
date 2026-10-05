@@ -20,7 +20,7 @@ It should feel easy to pick up in an ad, then a real challenge once you are play
 
 ## Who it is for
 
-Mom, on an iPhone, in portrait, probably on the couch. Big readable objects. A gentle first 15 seconds, then it gets hard for everyone, mom included; there is no easy mode (Rex's call, 2026-10-04). A crash should feel silly, not punishing. The cat is cute. The coyotes are mean on purpose, so the cute/danger contrast is the joke.
+Mom, on an iPhone, in portrait, probably on the couch. Big readable objects. A short gentle start (about 8 seconds), then it gets hard for everyone, mom included; there is no easy mode (Rex's call, 2026-10-04). A crash should feel silly, not punishing. The cat is cute. The coyotes are mean on purpose, so the cute/danger contrast is the joke.
 
 Rex is learning while we build. Teaching comments in the Swift files stay. Do not turn this into an engine or a framework.
 
@@ -135,9 +135,11 @@ Never block all three lanes with no jump, duck, or ride out. Two trees plus a fo
 Like Subway Surfers: easy to start, hard the longer you last, and endless. Rex's calls of 2026-10-04 are in `docs/plans/challenge.md`.
 
 - One difficulty ramp drives speed, the jump, the gaps, and how much the mixes lean hard.
-- The first 15 s are easy mixes only: one coyote, one tree, food lines, food over a coyote. Medium mixes (two busy lanes, short slaloms, coyote then tree, double hops, the first low things to duck, the first blocked lanes) join at 15 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip, both sides blocked, a blocked zigzag, a gate of blocked lanes with a tree to ride through, the rare three-coyote and three-low-thing walls) join at 40 s. These two times are fixed in seconds. Easy mixes thin out but never vanish.
-- Distances inside a mix grow with speed, but less than speed does, so a faster run leaves less time between things: two coyotes in a lane are 1.1 s apart at the start and about 0.85 s at top speed.
-- The breather between mixes shrinks from 1.75 s. From 40 s mixes chain: the gap drops under a second and shrinks to 0.4 s.
+- The road is already filled when the run starts, so the first coyote reaches her about two seconds after the tap (Rex's call, 2026-10-05, was about eight).
+- Every mix has at least two or three obstacles; there are no food-only mixes.
+- The first 8 s are easy mixes only: two or three coyotes one move at a time, a tree with coyotes beside it, food over a coyote. Medium mixes (two busy lanes, slaloms and snakes, coyote then tree, double hops, low things to duck, the first blocked lanes) join at 8 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip, both sides blocked, a blocked zigzag, a gate of blocked lanes with a tree to ride through, a blocked lane that walks across the road, the rare three-coyote and three-low-thing walls) join at 25 s. These two times are fixed in seconds (Rex's call, 2026-10-05, were 15 and 40). Easy mixes thin out but never vanish.
+- Distances inside a mix grow with the square root of speed, so a faster run leaves less time between things: two coyotes in a lane are 1.1 s apart at the start and about 0.8 s at top speed.
+- The gap between mixes is 0.9 s at the start and shrinks to 0.25 s, so mixes run into each other.
 - Fairness rule: there is always a way through, and time to steer to it. Some lanes cannot be survived by staying in them, so steering is required, not just easier. Two things in one lane are at least 19 m apart (written at 17 m/s), and a low thing after a coyote 24 m, inside a mix and where one mix meets the next. Low things never stand beside the middle of a tree, where a rider stepping off would drop into one. New mixes are checked against this by hand.
 - Cat trees stretch fully with speed, so a ride lasts about the same time; what comes after a tree moves back to match.
 
@@ -220,8 +222,8 @@ This is the live game, not a wish list.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
-- Duck into the box with a swipe down. One low thing per world to duck under, from about 15 s. A one-time hint teaches it (not shown for a blocked lane).
-- Blocked lanes (a coyote under a low thing) from 15 s, so steering is required. Mixes chain from 40 s.
+- Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
+- Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 25 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.

@@ -130,6 +130,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let segmentLength: Float = 24
     /// Coyotes, food, and trees appear this far ahead, inside the fog.
     private let spawnAhead: Float = 118
+    /// When a run starts, the road is filled with mixes from here out to spawnAhead,
+    /// so the first coyote arrives about two seconds after the tap, not eight.
+    private let firstWaveAhead: Float = 40
     /// The road is built out to here so the horizon never shows a gap.
     private let trackDepth: Float = 190
     /// Anything this far behind the cat is off camera and gets recycled.
@@ -195,11 +198,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     /// Distances inside an obstacle mix are written for 17 m/s. They stretch with
-    /// speed, but less than speed does (the 0.6 power), so the faster she goes, the
-    /// less time there is between things: 19 m between two coyotes is 1.1 s at the
-    /// start and about 0.85 s at top speed. That squeeze is most of what makes a
+    /// speed, but less than speed does (the square root), so the faster she goes,
+    /// the less time there is between things: 19 m between two coyotes is 1.1 s at
+    /// the start and about 0.8 s at top speed. That squeeze is most of what makes a
     /// long run hard.
-    private var spacingScale: Float { pow(runSpeed() / 17, 0.6) }
+    private var spacingScale: Float { (runSpeed() / 17).squareRoot() }
     /// Cat trees stretch fully with speed, so a ride lasts about the same time.
     private var treeScale: Float { runSpeed() / 17 }
 
@@ -380,7 +383,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var food = 0
     private var bestScore = 0
     private var score: Int { Int(meters) + food * Self.foodPoints }
-    private var untilWave: Float = 30
+    private var untilWave: Float = 0
     private var lastWave = -1
     private var lineClock: Float = 0
     private var lastTime: TimeInterval = 0
@@ -854,9 +857,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 itemPool[key, default: []].append(node)
             }
         }
-        // Chained hard mixes with blocked lanes can put a dozen coyotes on the road.
-        stock("coyote", 16) { makeCoyote() }
-        stock("food", 24) { makeFood() }
+        // Packed, chained mixes can put well over a dozen coyotes on the road.
+        stock("coyote", 22) { makeCoyote() }
+        stock("food", 28) { makeFood() }
         for size in Self.treeSizes {
             // Four: the staircase mix uses three of one size, and the mix before
             // it can still have one on the road (a 333 ms stall at 60 s with three).
@@ -865,7 +868,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // The zigzag mix alone has four low things, all in one world, and from
         // 40 s mixes chain with almost no gap.
         for world in WorldKind.allCases {
-            stock("low-\(world)", 12) { makeLowThing(world) }
+            stock("low-\(world)", 14) { makeLowThing(world) }
         }
     }
 
@@ -938,7 +941,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         untilWave -= dz
         if untilWave <= 0 {
-            untilWave = spawnWave()
+            untilWave = spawnWave(at: spawnAhead)
         }
 
         updateJump(dt: dt)
@@ -1112,51 +1115,54 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private static func b(_ lane: Int, _ ahead: Float) -> [Spawn] { [c(lane, ahead), d(lane, ahead)] }
 
     private static let waves: [Wave] = [
-        // Easy: one thing to do at a time.
-        Wave(tier: 0, spawns: [c(1, 0)]),
-        Wave(tier: 0, spawns: [c(0, 0), f(1, 0), f(1, 3), f(1, 6)]),
+        // Easy (first 8 s): two or three things, one move at a time.
+        Wave(tier: 0, spawns: [c(1, 0), c(0, 19), c(2, 19), f(1, 19), f(1, 22)]),
+        Wave(tier: 0, spawns: [c(0, 0), c(2, 0), f(1, 0), f(1, 3), c(1, 19)]),
         // Food right after a coyote: the reward for jumping it.
-        Wave(tier: 0, spawns: [c(1, 0), f(1, 6), f(1, 9), f(1, 12)]),
-        Wave(tier: 0, spawns: [t(1, 0)]),
-        Wave(tier: 0, spawns: [t(1, 0, 14), roof(1, 4), roof(1, 7), roof(1, 10)]),
-        Wave(tier: 0, spawns: [f(0, 0), f(1, 4), f(2, 8)]),
-        Wave(tier: 0, spawns: [f(1, 0), f(1, 3), f(1, 6), f(1, 9), f(1, 12)]),
-        Wave(tier: 0, spawns: [c(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
+        Wave(tier: 0, spawns: [c(1, 0), f(1, 6), f(1, 9), f(1, 12), c(0, 19), c(2, 19)]),
+        Wave(tier: 0, spawns: [t(1, 0), c(0, 10), c(2, 20)]),
+        Wave(tier: 0, spawns: [t(1, 0, 14), roof(1, 4), roof(1, 7), roof(1, 10), c(0, 8), c(2, 8)]),
+        Wave(tier: 0, spawns: [f(0, 0), f(1, 4), f(2, 8), c(1, 16), c(2, 24)]),
+        Wave(tier: 0, spawns: [c(0, 0), c(1, 19), c(2, 38), f(2, 0), f(2, 3)]),
+        Wave(tier: 0, spawns: [c(1, 0), c(1, 19), f(0, 6), f(0, 9), f(2, 12), f(2, 15)]),
         // Food over a coyote: jump it to eat.
-        Wave(tier: 0, spawns: [c(1, 3), air(1, 0), air(1, 3), air(1, 6)]),
+        Wave(tier: 0, spawns: [c(1, 3), air(1, 0), air(1, 3), air(1, 6), c(0, 22), c(2, 22)]),
 
-        // Medium: two lanes busy, or a short slalom.
-        Wave(tier: 1, spawns: [c(0, 0), c(1, 0), f(2, 0), f(2, 3)]),
-        Wave(tier: 1, spawns: [t(0, 0), c(2, 0)]),
-        Wave(tier: 1, spawns: [t(2, 0), c(0, 0), f(1, 0)]),
-        Wave(tier: 1, spawns: [t(0, 0), t(1, 0), f(2, 0), f(2, 3), f(2, 6)]),
-        Wave(tier: 1, spawns: [c(1, 0), t(0, 0), c(2, 0)]),
-        Wave(tier: 1, spawns: [c(0, 0), c(1, 20), c(2, 40)]),
-        Wave(tier: 1, spawns: [c(0, 0), c(2, 0), c(1, 22)]),
-        Wave(tier: 1, spawns: [t(1, 0, 17), c(0, 8), c(2, 8)]),
+        // Medium (from 8 s): two lanes busy, slaloms, ducking, the first blocked lanes.
+        Wave(tier: 1, spawns: [c(0, 0), c(1, 0), f(2, 0), f(2, 3), c(1, 19), c(2, 19)]),
+        Wave(tier: 1, spawns: [t(0, 0), c(2, 0), c(1, 20)]),
+        Wave(tier: 1, spawns: [t(2, 0), c(0, 0), f(1, 0), c(1, 20)]),
+        Wave(tier: 1, spawns: [t(0, 0), t(1, 0), f(2, 0), f(2, 3), f(2, 6), c(2, 19)]),
+        Wave(tier: 1, spawns: [c(1, 0), t(0, 0), c(2, 0), c(1, 22)]),
+        // A snake: the coyotes walk across the road and back.
+        Wave(tier: 1, spawns: [c(0, 0), c(1, 10), c(2, 20), c(1, 30), c(0, 40)]),
+        Wave(tier: 1, spawns: [c(0, 0), c(2, 0), c(1, 22), c(0, 22)]),
+        Wave(tier: 1, spawns: [t(1, 0, 17), c(0, 8), c(2, 8), c(0, 28), c(2, 28)]),
         // Jump the coyote, land, then jump up onto the tree.
-        Wave(tier: 1, spawns: [c(1, 0), t(1, 19, 14), roof(1, 25), roof(1, 28)]),
-        // Ducking joins here, so the first 15 s only ask for jumps.
-        Wave(tier: 1, spawns: [d(1, 0)], weight: 1.3),
+        Wave(tier: 1, spawns: [c(1, 0), c(0, 10), c(2, 10), t(1, 19, 14), roof(1, 25), roof(1, 28)]),
+        Wave(tier: 1, spawns: [d(1, 0), c(0, 0), c(2, 19)], weight: 1.3),
         // Food just past a low thing: the reward for ducking.
-        Wave(tier: 1, spawns: [d(1, 0), f(1, 6), f(1, 9), f(1, 12)]),
-        Wave(tier: 1, spawns: [d(0, 0), d(1, 0), f(2, 0), f(2, 3), f(2, 6)]),
-        Wave(tier: 1, spawns: [d(0, 0), c(2, 0), f(1, 0), f(1, 3)]),
+        Wave(tier: 1, spawns: [d(1, 0), f(1, 6), f(1, 9), f(1, 12), c(0, 10), c(2, 10)]),
+        Wave(tier: 1, spawns: [d(0, 0), d(1, 0), f(2, 0), f(2, 3), f(2, 6), c(2, 19)]),
+        Wave(tier: 1, spawns: [d(0, 0), c(2, 0), f(1, 0), f(1, 3), c(1, 19)]),
+        // Every lane asks for something: duck, jump, duck.
+        Wave(tier: 1, spawns: [d(0, 0), c(1, 0), d(2, 0)]),
         // The first blocked lanes: steer around, with food on the open side.
-        Wave(tier: 1, spawns: b(1, 0) + [f(0, 0), f(0, 3), f(0, 6)], weight: 1.3),
-        Wave(tier: 1, spawns: b(0, 0) + [c(1, 0), f(2, 0), f(2, 3)]),
+        Wave(tier: 1, spawns: b(1, 0) + [f(0, 0), f(0, 3), f(0, 6), c(0, 19), c(2, 19)], weight: 1.3),
+        Wave(tier: 1, spawns: b(0, 0) + [c(1, 0), f(2, 0), f(2, 3), c(2, 19)]),
+        Wave(tier: 1, spawns: b(0, 0) + b(2, 0) + [f(1, 0), f(1, 3), f(1, 6)], rotates: false),
         // Two coyotes close together: a double hop, with food in the air between.
         Wave(tier: 1, spawns: [c(1, 0), c(1, 19), air(1, 9), air(1, 28), f(0, 6), f(2, 12)]),
 
-        // Hard: back-to-back moves.
+        // Hard (from 25 s): back-to-back moves.
         // Three coyotes is a forced jump. Rare, per the PRD.
         Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(2, 0)], weight: 0.4),
-        Wave(tier: 2, spawns: [t(0, 0), t(1, 0), c(2, 0)]),
-        Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(1, 19), c(2, 19)]),
+        Wave(tier: 2, spawns: [t(0, 0), t(1, 0), c(2, 0), c(2, 19)]),
+        Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(1, 19), c(2, 19), c(0, 38), c(2, 38)]),
         // Ride, then hop to the neighbor tree, or drop and jump the coyote.
         Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 6, 17), c(0, 33), f(2, 0), f(2, 4), f(2, 8)], rotates: false),
         Wave(tier: 2, spawns: [t(1, 0, 14), c(0, 10), c(2, 10), c(1, 33)]),
-        Wave(tier: 2, spawns: [c(0, 0), c(2, 10), c(1, 20), c(0, 30)]),
+        Wave(tier: 2, spawns: [c(0, 0), c(2, 10), c(1, 20), c(0, 30), c(2, 30)]),
         // A staircase of trees you can hop up the whole way.
         Wave(tier: 2, spawns: [t(0, 0, 14), t(1, 10, 14), t(2, 20, 14)], rotates: false),
         Wave(tier: 2, spawns: [c(1, 0), c(1, 19), c(1, 38), f(0, 8), f(0, 11), f(2, 27), f(2, 30)]),
@@ -1178,20 +1184,29 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // A gate: both sides blocked, a tree in the middle to ride through.
         Wave(tier: 2, spawns: b(0, 0) + [t(1, 0, 14), roof(1, 5), roof(1, 8)] + b(2, 0), rotates: false),
         // Blocked in front, then a coyote in the lane you steered to.
-        Wave(tier: 2, spawns: b(1, 0) + [c(0, 19), c(2, 19), air(0, 16), air(0, 19), air(0, 22)])
+        Wave(tier: 2, spawns: b(1, 0) + [c(0, 19), c(2, 19), air(0, 16), air(0, 19), air(0, 22)]),
+        // Middle blocked with coyotes beside it: jump on the side. Then the sides
+        // block and the middle has the coyote: jump, land, steer in, jump again.
+        Wave(tier: 2, spawns: [c(0, 0)] + b(1, 0) + [c(2, 0)] + b(0, 26) + [c(1, 26)] + b(2, 26), rotates: false),
+        // A blocked lane walks across the road with a coyote beside it.
+        Wave(tier: 2, spawns: b(0, 0) + [c(1, 0)] + b(1, 22) + [c(2, 22)] + b(2, 44) + [c(0, 44)], rotates: false)
     ]
 
     /// Cat tree lengths we build meshes for. Stretched lengths snap to one of these
     /// so the tree pool stays small.
     private static let treeSizes: [Float] = [11, 14, 17, 20, 24, 28, 32]
 
+    /// Seconds into a run when medium and hard mixes join.
+    private let mediumFrom: Float = 8
+    private let hardFrom: Float = 25
+
     /// Picks a mix for this point in the run: easy ones fade out, harder ones fade in.
     private func pickWave() -> Int {
         if let forced = e2eWave, Self.waves.indices.contains(forced) { return forced }
         let tierWeight: [Float] = [
             max(0.25, 1 - 1.2 * ramp),
-            timeAlive >= 15 ? min(1, 0.3 + ramp) : 0,
-            timeAlive >= 40 ? 1.3 * ramp : 0
+            timeAlive >= mediumFrom ? min(1, 0.4 + ramp) : 0,
+            timeAlive >= hardFrom ? 0.4 + 1.3 * ramp : 0
         ]
         let choices = Self.waves.indices.filter { $0 != lastWave }
         let weights = choices.map { tierWeight[Self.waves[$0].tier] * Self.waves[$0].weight }
@@ -1203,9 +1218,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return choices[0]
     }
 
-    /// Drops one wave of coyotes, food, and trees far ahead.
+    /// Drops one wave of coyotes, food, and trees `base` meters ahead (far ahead,
+    /// in the fog, except when filling the road at the start of a run).
     /// Returns how many meters until the next wave.
-    private func spawnWave() -> Float {
+    private func spawnWave(at base: Float) -> Float {
         lastWave = pickWave()
         let wave = Self.waves[lastWave]
         let mirror = Bool.random()
@@ -1239,7 +1255,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var shift: Float = 0
         for spawn in wave.spawns where spawn.kind != .food {
             let lane = place(spawn.lane)
-            let front = spawnAhead + ahead(spawn)
+            let front = base + ahead(spawn)
             for item in items where item.lane == lane && item.kind != .food {
                 let lastEnd = item.length - item.z
                 let gap: Float = (item.kind == .coyote && spawn.kind == .low ? 24 : 19) * scale
@@ -1252,7 +1268,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for tree in trees {
             let start = ahead(tree.spawn) + shift
             treeEnd[tree.lane] = start + tree.length
-            addItem(.tree, lane: tree.lane, z: -spawnAhead - start, length: tree.length)
+            addItem(.tree, lane: tree.lane, z: -base - start, length: tree.length)
             reach = max(reach, start + tree.length)
         }
         for spawn in wave.spawns where spawn.kind != .tree {
@@ -1263,14 +1279,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 // Snapping the tree length can shorten it a little. Keep roof food on the roof.
                 at = min(at, end - 1.5)
             }
-            addItem(spawn.kind, lane: lane, z: -spawnAhead - at, onRoof: onRoof, high: spawn.high)
+            addItem(spawn.kind, lane: lane, z: -base - at, onRoof: onRoof, high: spawn.high)
             reach = max(reach, at)
         }
-        // Breathing room after the mix, in seconds so it means the same at any speed:
-        // 1.75 s at the start, shrinking with the ramp. From 40 s, when hard mixes
-        // join, mixes chain: the gap drops to under a second and keeps shrinking to
-        // 0.4 s, and only the per-lane gaps above keep the joins fair.
-        let gapSeconds: Float = timeAlive >= 40 ? max(0.4, 1.05 - 0.65 * ramp) : 1.75 - 0.7 * ramp
+        // A short beat after the mix, in seconds so it means the same at any speed:
+        // 0.9 s at the start, down to 0.25 s at top speed, so mixes run into each
+        // other. The per-lane gaps above are what keep the joins fair.
+        let gapSeconds: Float = max(0.25, 0.9 - 0.7 * ramp)
         return reach + runSpeed() * gapSeconds
     }
 
@@ -2178,8 +2193,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         hud.hideHome()
         state = .running
         timeAlive = e2eStartTime
-        untilWave = 30
         lastWave = -1
+        // Fill the road ahead now, so there's something to do right away.
+        var next = firstWaveAhead
+        while next < spawnAhead {
+            next += spawnWave(at: next)
+        }
+        untilWave = next - spawnAhead
     }
 
     private func resetRun() {

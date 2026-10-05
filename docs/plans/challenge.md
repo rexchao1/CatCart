@@ -95,3 +95,14 @@ Asked by Rex on 2026-10-04. Builds on `difficulty.md` (the ramp and tiers) and `
 - The pilot survived ~22 s each of the same-lane hard mixes 24, 27, 32, 34, 35 at top speed (`CATCART_TIME=200`), forced back to back, so the joins held.
 - Perf: 60 s at top speed in the city, and the zigzag (39) and gate (40) mixes forced in the house: no mid-run builds, no hitches past the launch frame.
 - Not yet played by hand or on a phone. Tuning (gaps, clear height, chase time, food points) waits on Rex playing it.
+
+## Round 2, 2026-10-05 (Rex: still too easy, too spread out, start sooner, more obstacles)
+
+- The road is filled with mixes from 40 m out when a run starts, so the first coyote arrives about 2 s after the tap instead of about 9.
+- Medium mixes at 8 s (was 15), hard at 25 s (was 40). Hard mixes weigh in sooner (0.4 + 1.3 x ramp).
+- Gap between mixes: 0.9 s at the start, down to 0.25 s (was 1.75 s, down to 0.4 s from 40 s).
+- Spacing inside a mix grows with the square root of speed (was the 0.6 power): same-lane coyotes are about 0.8 s apart at top speed.
+- Every mix has two or more obstacles; the food-only mixes are gone. 46 mixes, including two new hard ones with blocked lanes (a blocked middle with coyotes beside it, then the reverse; a blocked lane that walks across the road).
+- Pools: 22 coyotes, 28 cans, 14 low things per world.
+- Checks: the non-steering pilot (crashes on) survived ~14 s of each of the 36 mixes without a blocked lane, forced back to back at top speed. Perf: 75 s from the start and the busiest blocked-lane mixes at top speed, no mid-run builds. One extra 33 ms frame at the start of a run, from filling the road at once; it lands during the camera swoop after the tap.
+- Not yet played by hand.
