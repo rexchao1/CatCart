@@ -951,6 +951,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         seg.node.position = SCNVector3(0, 0, near)
         scene.rootNode.addChildNode(seg.node)
         segments.append(seg)
+        frameLog.note("slice \(seg.world)")
     }
 
     private func takeSegment(_ world: WorldKind) -> Segment {
@@ -1075,6 +1076,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         lastTime = time
         guard !testFrozen else { return }
         frameLog.frame(at: time, runTime: timeAlive)
+        let updateStart = CACurrentMediaTime()
+        defer { frameLog.updateDone(since: updateStart) }
         handleInput()
         updatePuffs(dt: dt)
 
@@ -1099,6 +1102,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
+    /// Test-only: how long SceneKit took to encode the frame after our update.
+    func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
+        frameLog.renderDone()
+    }
+
     private func step(dt: Float) {
         timeAlive += dt
         let speed = runSpeed()
@@ -1111,6 +1119,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         untilWave -= dz
         if untilWave <= 0 {
+            frameLog.note("wave")
             untilWave = spawnWave(at: spawnAhead)
         }
 
@@ -2877,6 +2886,9 @@ private struct FrameLog {
     private var worst: Double = 0
     private var hitches = 0
     private var events: [String] = []
+    private var updateMs = 0.0
+    private var renderMs = 0.0
+    private var updateEnd: CFTimeInterval = 0
 
     init(enabled: Bool) {
         self.enabled = enabled
@@ -2885,6 +2897,19 @@ private struct FrameLog {
     mutating func note(_ event: String) {
         guard enabled else { return }
         events.append(event)
+    }
+
+    /// Our own game code for the frame, then SceneKit's drawing work after it.
+    /// A hitch with a long update is our code; a long render is the graphics side.
+    mutating func updateDone(since start: CFTimeInterval) {
+        guard enabled else { return }
+        updateEnd = CACurrentMediaTime()
+        updateMs = (updateEnd - start) * 1000
+    }
+
+    mutating func renderDone() {
+        guard enabled else { return }
+        renderMs = (CACurrentMediaTime() - updateEnd) * 1000
     }
 
     mutating func frame(at time: TimeInterval, runTime: Float) {
@@ -2904,7 +2929,8 @@ private struct FrameLog {
         if ms > 25 {
             hitches += 1
             let cause = events.isEmpty ? "" : " after " + events.joined(separator: ", ")
-            emit(String(format: "CATCART hitch %.0f ms at run %.1f s", ms, runTime) + cause)
+            emit(String(format: "CATCART hitch %.0f ms at run %.1f s (prev frame: update %.1f ms, render %.1f ms)",
+                        ms, runTime, updateMs, renderMs) + cause)
         }
         if time - windowStart >= 5 {
             emit(String(format: "CATCART frames avg %.1f ms worst %.0f ms hitches %d at run %.1f s",

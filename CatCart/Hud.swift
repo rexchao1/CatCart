@@ -14,17 +14,26 @@ final class Hud: SKScene {
 
     private var scoreChip: SKSpriteNode!
     private var foodChip: SKSpriteNode!
-    private var scoreLabel: SKLabelNode!
-    private var foodLabel: SKLabelNode!
+    private var scoreLabel: Readout!
+    private var foodLabel: Readout!
     private var panel: SKNode!
     private var home: SKNode!
     private var dim: SKSpriteNode!
     private var flash: SKSpriteNode!
     private var lines: SKNode!
+    private var linePool: [SKSpriteNode] = []
+    private var nextLine = 0
+    /// Test-only: CATCART_LINES=0 turns the speed lines off, to rule them in or out
+    /// when something on the HUD misbehaves on the phone.
+    private let linesOn = ProcessInfo.processInfo.environment["CATCART_LINES"] != "0"
     private var hint: SKNode?
+    private var fadedHint: SKNode?
     private var topSafe: CGFloat = 54
     private var shownScore = -1
     private var shownFood = -1
+    private var wantScore = 0
+    private var wantFood = 0
+    private var wantLine: CGFloat?
 
     private let ink = SKColor(red: 0.16, green: 0.30, blue: 0.46, alpha: 1)
     private let softInk = SKColor(red: 0.28, green: 0.36, blue: 0.48, alpha: 1)
@@ -45,11 +54,20 @@ final class Hud: SKScene {
         lines = SKNode()
         lines.zPosition = 5
         addChild(lines)
+        // The speed lines are built once and reused; see speedLine.
+        for _ in 0..<6 {
+            let line = SKSpriteNode(color: .white, size: CGSize(width: 2, height: 45))
+            line.isHidden = true
+            lines.addChild(line)
+            linePool.append(line)
+        }
 
         scoreChip = makeChip()
         foodChip = makeChip()
-        scoreLabel = makeLabel()
-        foodLabel = makeLabel()
+        scoreLabel = Readout(color: ink)
+        scoreLabel.zPosition = 11
+        foodLabel = Readout(color: ink)
+        foodLabel.zPosition = 11
         [scoreChip, foodChip].forEach { addChild($0) }
         [scoreLabel, foodLabel].forEach { addChild($0) }
 
@@ -70,6 +88,7 @@ final class Hud: SKScene {
 
         flash = SKSpriteNode(color: .white, size: size)
         flash.alpha = 0
+        flash.isHidden = true
         flash.zPosition = 40
         addChild(flash)
         layout(topSafe: topSafe)
@@ -80,16 +99,6 @@ final class Hud: SKScene {
         chip.size = CGSize(width: 150, height: 40)
         chip.zPosition = 10
         return chip
-    }
-
-    private func makeLabel() -> SKLabelNode {
-        let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        label.fontSize = 17
-        label.fontColor = ink
-        label.verticalAlignmentMode = .center
-        label.horizontalAlignmentMode = .left
-        label.zPosition = 11
-        return label
     }
 
     func layout(topSafe: CGFloat) {
@@ -122,17 +131,45 @@ final class Hud: SKScene {
 
     // MARK: - Pills
 
+    // The game calls these every frame from SceneKit's update. They only note the
+    // numbers; the pills change in update(_:) below, SpriteKit's own moment for
+    // changing its nodes.
+    //
+    // Why: a phone screenshot mid-run caught the HUD sprites drawn with each
+    // other's pictures for a frame: the score pill as a plain white box, the
+    // pill picture squeezed onto the first digit, and the digits shifted one
+    // place. The simulator never shows it. Changing sprites from SceneKit's
+    // update, outside SpriteKit's own frame, is our theory for the cause; this
+    // move is the fix for that theory, not yet proven on the phone.
+
     func setScore(_ score: Int) {
-        guard score != shownScore else { return }
-        shownScore = score
-        scoreLabel.text = score.formatted()
+        wantScore = score
     }
 
     func setFood(_ food: Int) {
+        wantFood = food
+    }
+
+    override func update(_ currentTime: TimeInterval) {
+        showScore(wantScore)
+        showFood(wantFood)
+        if let strength = wantLine {
+            wantLine = nil
+            spawnLine(strength: strength)
+        }
+    }
+
+    private func showScore(_ score: Int) {
+        guard score != shownScore else { return }
+        shownScore = score
+        scoreLabel.show(score.formatted())
+    }
+
+    private func showFood(_ food: Int) {
         guard food != shownFood else { return }
         let grew = shownFood >= 0 && food > shownFood
         shownFood = food
-        foodLabel.text = "food \(food)"
+        foodLabel.show("food \(food)")
         if grew {
             // A small pulse on the pill instead of score text flying around the screen.
             foodChip.removeAction(forKey: "pulse")
@@ -530,6 +567,8 @@ final class Hud: SKScene {
     /// learned yet. It bobs gently so it's noticed without covering the road.
     func showHint(_ text: String) {
         hideHint()
+        fadedHint?.removeFromParent()
+        fadedHint = nil
         let node = SKNode()
         node.zPosition = 30
         // Below the cart, so it never covers her or the road ahead.
@@ -550,36 +589,128 @@ final class Hud: SKScene {
     func hideHint() {
         guard let node = hint else { return }
         hint = nil
-        node.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+        // Faded and hidden, not removed by an SKAction (see speedLine). The next
+        // showHint takes it out directly.
+        node.run(.sequence([.fadeOut(withDuration: 0.2), .hide()]))
+        fadedHint = node
     }
 
     // MARK: - Effects
 
     func flashWhite() {
         flash.removeAllActions()
+        flash.isHidden = false
         flash.alpha = 0.7
-        flash.run(.fadeOut(withDuration: 0.25))
+        // Hidden again once faded, so no full-screen white sprite sits in the
+        // overlay for the rest of the run.
+        flash.run(.sequence([.fadeOut(withDuration: 0.25), .hide()]))
     }
 
     /// Thin streaks near the screen edges that sell speed without covering the track.
+    ///
+    /// The streaks come from a small pool built with the HUD, and are never added
+    /// or removed mid-run. Adding a sprite every 0.12 s that removed itself with
+    /// an SKAction is reported to make SpriteKit draw out of order or with the
+    /// wrong picture for a frame when it is SceneKit's overlay. The pool alone did
+    /// not stop the white pills on the phone; see setScore for the other change.
     func speedLine(strength: CGFloat) {
+        wantLine = strength
+    }
+
+    private func spawnLine(strength: CGFloat) {
+        guard linesOn, !linePool.isEmpty else { return }
         let side: CGFloat = Bool.random() ? -1 : 1
         let x = size.width / 2 + side * CGFloat.random(in: 0.32...0.48) * size.width
         let y = CGFloat.random(in: 0.25...0.6) * size.height
-        let line = SKSpriteNode(color: SKColor(white: 1, alpha: 0.28 * strength),
-                                size: CGSize(width: 2, height: CGFloat.random(in: 30...60)))
+        let line = linePool[nextLine]
+        nextLine = (nextLine + 1) % linePool.count
+        line.removeAllActions()
+        line.color = SKColor(white: 1, alpha: 0.28 * strength)
+        line.size = CGSize(width: 2, height: CGFloat.random(in: 30...60))
         line.position = CGPoint(x: x, y: y)
+        line.alpha = 1
+        line.isHidden = false
         // Lean the streak outward, like it's flying past the camera.
         line.zRotation = side * 0.35
-        lines.addChild(line)
         let drift = CGVector(dx: side * 60, dy: -140)
         line.run(.sequence([
             .group([.move(by: drift, duration: 0.28), .fadeOut(withDuration: 0.28)]),
-            .removeFromParent()
+            .hide()
         ]))
     }
 
     func clearLines() {
-        lines.removeAllChildren()
+        wantLine = nil
+        for line in linePool {
+            line.removeAllActions()
+            line.isHidden = true
+        }
+    }
+}
+
+/// The numbers in the top pills, built from one picture per character that is
+/// drawn up front. An SKLabelNode draws and uploads a new text picture each time
+/// its text changes, which for the score is nearly every frame. Here a change
+/// only swaps pictures that already exist. Digits share one width so the number
+/// doesn't shift sideways as it counts.
+private final class Readout: SKNode {
+    private static var glyphs: [Character: SKTexture] = [:]
+    private static var digitWidth: CGFloat = 0
+    private var sprites: [SKSpriteNode] = []
+    private var shown = ""
+
+    init(color: SKColor) {
+        super.init()
+        Self.drawGlyphs(color: color)
+        // Enough sprites for "1,234,567" or "food 1234" up front, so a new digit
+        // mid-run doesn't add a node.
+        addSprites(upTo: 12)
+    }
+
+    private func addSprites(upTo count: Int) {
+        while sprites.count < count {
+            let sprite = SKSpriteNode()
+            sprite.anchorPoint = CGPoint(x: 0, y: 0.5)
+            sprite.isHidden = true
+            addChild(sprite)
+            sprites.append(sprite)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    private static func drawGlyphs(color: SKColor) {
+        guard glyphs.isEmpty else { return }
+        let font = UIFont(name: "AvenirNext-Heavy", size: 17) ?? .systemFont(ofSize: 17, weight: .heavy)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        for ch in "0123456789,.food " {
+            let text = String(ch) as NSString
+            let width = ceil(text.size(withAttributes: attrs).width)
+            let size = CGSize(width: max(width, 1), height: ceil(font.lineHeight))
+            let image = UIGraphicsImageRenderer(size: size).image { _ in
+                text.draw(at: .zero, withAttributes: attrs)
+            }
+            glyphs[ch] = SKTexture(image: image)
+            if ch.isNumber { digitWidth = max(digitWidth, width) }
+        }
+    }
+
+    func show(_ text: String) {
+        guard text != shown else { return }
+        shown = text
+        addSprites(upTo: text.count)
+        var x: CGFloat = 0
+        let chars = Array(text)
+        for (i, sprite) in sprites.enumerated() {
+            guard i < chars.count, let texture = Self.glyphs[chars[i]] else {
+                sprite.isHidden = true
+                continue
+            }
+            sprite.isHidden = false
+            sprite.texture = texture
+            sprite.size = texture.size()
+            sprite.position = CGPoint(x: x, y: 0)
+            x += chars[i].isNumber ? Self.digitWidth : texture.size().width
+        }
     }
 }
