@@ -59,6 +59,6 @@ final class GameSCNView: SCNView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        game?.touchEnded()
+        game?.touchCancelled()
     }
 }

@@ -1,5 +1,7 @@
 # Plan: a run that gets harder and stays fair
 
+Speed timing here is superseded by `pacing-and-trees.md` (2026-10-05): the ramp is full at 75 s, speed creeps to 38 after it, and hard mixes join at 20 s.
+
 Superseded in part by `challenge.md` (2026-10-04): top speed 34 over 2.5 min, spacing that shrinks in time, blocked lanes that require steering, and chained mixes. The ramp and tier design below still applies.
 
 Goal: like Subway Surfers, a run starts gentle, speeds up, and throws harder obstacle mixes the longer you last, while staying playable at top speed.

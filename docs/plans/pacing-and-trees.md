@@ -113,14 +113,16 @@ Follow-up the same day:
 
 | # | Step | State |
 |---|---|---|
-| 1 | Pacing: 75 s ramp, speed creep to 38 after it, hard mixes at 20 s, easy floor 15%; PRD speed lines | not started |
-| 2 | Death pause: 1 s tap lock, drop queued input on crash, restart on a clean tap only, button pops in after the pause | not started |
-| 3 | Time on the death panel next to score and food; check the layout on screen | not started |
+| 1 | Pacing: 75 s ramp, speed creep to 38 after it, hard mixes at 20 s, easy floor 15%; PRD speed lines | done |
+| 2 | Death pause: 1 s tap lock, drop queued input on crash, restart on a clean tap only, button pops in after the pause | done |
+| 3 | Time on the death panel next to score and food; check the layout on screen | done |
 | 4 | Higher jump (2.6 m peak, same airtime), clear height and air food scaled to match; short tree roof to 2.0 m. Per-tree roof height: each tree knows its roof; landing, riding, stepping off, side bumps, camera, dust, and shadow use the roof of the tree she's on | not started |
 | 5 | Tall tree model: two stories, built and pooled up front; crash on its front from the ground, mount from a short roof | not started |
 | 6 | Ramp model and rules: slope in front of a tree, roll up, side entry low or bump, pooled up front | not started |
 | 7 | New tree mixes (list above), more weight on tree mixes overall, each checked by hand against the fairness rule | not started |
 | 8 | Simulator check: screenshots of a tall tree, a ramp, and the death panel; ramp and tall-tree moves seen with `CATCART_SWIPES`; perf log; PRD update | not started |
+
+Result for steps 1 to 3 (2026-10-05, iPhone 17 simulator): speed logged at 20.4 m/s at 8 s, 24.9 at 20 s, 27.9 at 30 s, 31.3 at 45 s, 34 at 75 s, 35 at 105 s, 36 at 135 s, and 38 from about 195 s. Death pause driven with `CATCART_SWIPES` (two stumbles to crash, then `tap`, `press`/`release`, and swipes): a tap at 0.4 s and 0.5 s did nothing, a touch that began in the pause and lifted at 1.3 s did nothing, a touch held down through the crash and lifted 2.5 s later did nothing, swipes after the pause did nothing, and a tap after the pause restarted. The button showed at 1.0 s. Panel screenshots with 61 / 0 / 0:03, 2,480 / 18 / 1:12, and 12,345 / 123 / 12:34 all fit three columns; the longest shrinks all three numbers together and still reads. Time survived leaves out the `CATCART_TIME` head start (0:03 after starting at 200). `scripts/perf_run.sh` at 0 s and 60 s: steady 16.7 ms frames; two first runs each showed one stray stall with no spawn before it that did not repeat on a rerun. Not played by hand yet.
 
 Steps 1 to 3 are small and can ship first so Rex can play the new pacing while the trees are built.
 

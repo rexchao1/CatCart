@@ -1,5 +1,7 @@
 # Plan: a real challenge, with a score
 
+Speed timing here is superseded by `pacing-and-trees.md` (2026-10-05): the ramp is full at 75 s, speed creeps to 38 after it, and hard mixes join at 20 s.
+
 Goal: the run plays like Subway Surfers. You have to steer, the road gets busy, speed squeezes your reaction time, and a good run is something to brag about with a score. It still starts gentle.
 
 Asked by Rex on 2026-10-04. Builds on `difficulty.md` (the ramp and tiers) and `duck.md` (ducking and low things).

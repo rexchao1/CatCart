@@ -81,7 +81,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, score and food as two big numbers, the best score, and a gold "New best!" sticker when she beats it. A "Dash again" paw button sits under it, and tapping runs again without going home. The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
@@ -95,7 +95,7 @@ Behind the cat, a little above, three lanes. The road bends down over a hill in 
 
 The cat never moves forward. The whole track (road, scenery, coyotes, food, trees) slides toward the camera at one speed. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
 
-Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 34 over about two and a half minutes (Rex's call, 2026-10-04, was 30 over three). It climbs fast early and settles (about 23 at 30 s, 28 at 1 min, 33 at 2 min). Things appear about 118 m ahead, inside the fog.
+Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 34 at 75 s (Rex's call, 2026-10-05, was two and a half minutes). It climbs fast early and settles (about 20 at 8 s, 25 at 20 s, 28 at 30 s, 31 at 45 s), so it's hard by 30 s. After 75 s speed keeps creeping up 1 m/s every 30 s and stops at 38 (about 3:15), so long runs still get harder; the jump, clear height, and gaps stay where they are at 75 s. Things appear about 118 m ahead, inside the fog.
 
 The camera trails the cat: it follows her lane partway, rises when she rides a tree, rolls a touch on lane changes, and widens a little as the run speeds up.
 
@@ -134,12 +134,12 @@ Never block all three lanes with no jump, duck, or ride out. Two trees plus a fo
 
 Like Subway Surfers: easy to start, hard the longer you last, and endless. Rex's calls of 2026-10-04 are in `docs/plans/challenge.md`.
 
-- One difficulty ramp drives speed, the jump, the gaps, and how much the mixes lean hard.
+- One difficulty ramp drives speed, the jump, the gaps, and how much the mixes lean hard. It's full at 75 s (see Camera and speed).
 - The road is already filled when the run starts, so the first coyote reaches her about two seconds after the tap (Rex's call, 2026-10-05, was about eight).
 - Every mix has at least two or three obstacles; there are no food-only mixes.
-- The first 8 s are easy mixes only: two or three coyotes one move at a time, a tree with coyotes beside it, food over a coyote. Medium mixes (two busy lanes, slaloms and snakes, coyote then tree, double hops, low things to duck, the first blocked lanes) join at 8 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip, both sides blocked, a blocked zigzag, a gate of blocked lanes with a tree to ride through, a blocked lane that walks across the road, the rare three-coyote and three-low-thing walls) join at 25 s. These two times are fixed in seconds (Rex's call, 2026-10-05, were 15 and 40). Easy mixes thin out but never vanish.
-- Distances inside a mix grow with the square root of speed, so a faster run leaves less time between things: two coyotes in a lane are 1.1 s apart at the start and about 0.8 s at top speed.
-- The gap between mixes is 0.9 s at the start and shrinks to 0.25 s, so mixes run into each other.
+- The first 8 s are easy mixes only: two or three coyotes one move at a time, a tree with coyotes beside it, food over a coyote. Medium mixes (two busy lanes, slaloms and snakes, coyote then tree, double hops, low things to duck, the first blocked lanes) join at 8 s. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip, both sides blocked, a blocked zigzag, a gate of blocked lanes with a tree to ride through, a blocked lane that walks across the road, the rare three-coyote and three-low-thing walls) join at 20 s. These two times are fixed in seconds (Rex's calls of 2026-10-05: medium was 15, hard was 40 and then 25). Easy mixes thin out by about 30 s but never vanish; they keep 15% of their weight.
+- Distances inside a mix grow with the square root of speed, so a faster run leaves less time between things: two coyotes in a lane are 1.1 s apart at the start, about 0.8 s at 34 m/s, and 0.75 s at 38.
+- The gap between mixes is 0.9 s at the start and shrinks to 0.25 s at 75 s (0.45 s at 30 s), so mixes run into each other.
 - Fairness rule: there is always a way through, and time to steer to it. Some lanes cannot be survived by staying in them, so steering is required, not just easier. Two things in one lane are at least 19 m apart (written at 17 m/s), and a low thing after a coyote 24 m, inside a mix and where one mix meets the next. Low things never stand beside the middle of a tree, where a rider stepping off would drop into one. New mixes are checked against this by hand.
 - Cat trees stretch fully with speed, so a ride lasts about the same time; what comes after a tree moves back to match.
 
@@ -164,7 +164,7 @@ A point per meter, plus 25 per can. No multiplier (Rex's call, 2026-10-04). The 
 
 ### Crash and retry
 
-White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with score, food, and best. Tap to run again. Best score lives in UserDefaults as `bestScore`. The older best distances (`bestMeters`, `bestMeters3D`) are not carried over.
+White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with score, food, time survived, and best. For 1 s after the crash taps do nothing, so mashing the screen can't start a run by accident; the panel shows at once so you can read your numbers. When the pause ends the "Dash again" button pops in. Only a fresh tap restarts: a touch that starts after the pause and lifts without swiping. A swipe that was under way when she crashed, or any swipe on the panel, does nothing (Rex's call, 2026-10-05). Best score lives in UserDefaults as `bestScore`. The older best distances (`bestMeters`, `bestMeters3D`) are not carried over.
 
 ### Feedback that stays
 
@@ -179,7 +179,7 @@ Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. 
 | Swipe left / right | Change lane |
 | Swipe up | Jump |
 | Swipe down | On the ground, duck into the box. In the air, land now |
-| Tap on the home screen or death panel | Start a run |
+| Tap on the home screen, or on the death panel once "Dash again" shows | Start a run |
 
 One finger. No on-screen buttons during the run. No tilt steering.
 
@@ -223,12 +223,12 @@ This is the live game, not a wish list.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
-- Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 25 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
+- Speed from 17 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
-- Home screen facing her, swoop into the run. HUD pills, death panel.
+- Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 
 Known gaps against this PRD:
@@ -287,6 +287,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. A mesh merged with `flattenedClone` starts with no materials and picks up its pieces' ones later, so call `applyLook` on the pieces before merging (the cat tree and low things do). Calling it on the merged node finds nothing, and the obstacle floats unbent over the far road until it is close (fixed 2026-10-04). When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `"6:tap"` is a finger down and up in place; `"5:press"` and `"7:release"` hold a finger down between them, for testing a touch that's still down when she crashes. Without god mode, two stumbles about half a second apart crash her, which is the easy way to reach the death panel. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
 
 If you add a mechanic, write the player-facing rule here in the same commit.

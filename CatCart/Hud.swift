@@ -235,7 +235,9 @@ final class Hud: SKScene {
 
     // MARK: - Crash panel
 
-    func showDead(score: Int, food: Int, best: Int, newBest: Bool) {
+    /// The panel pops in at once with the numbers. The "Dash again" button waits
+    /// for `showRetry`, when taps start working again.
+    func showDead(score: Int, food: Int, seconds: Int, best: Int, newBest: Bool) {
         panel.removeAllChildren()
         panel.isHidden = false
         // The panel shows the numbers now, so the pills step aside.
@@ -248,23 +250,23 @@ final class Hud: SKScene {
         back.size = CGSize(width: width, height: 236)
         panel.addChild(back)
 
-        // Two big numbers side by side, with a thin line between.
-        let column = width * 0.22
-        for (x, value, word) in [(-column, score.formatted(), "score"),
-                                 (column, "\(food)", "food")] {
-            let number = textSprite(value, size: 48, weight: .black, color: ink)
-            fit(number, maxWidth: column * 1.7)
+        // Three big numbers across: score, food, and time survived (like 1:12).
+        // A long score would shrink on its own and look smaller than the others,
+        // so all three shrink together to the size the widest one needs.
+        let column = width * 0.3
+        let time = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        let stats = [(-column, score.formatted(), "score"), (0, "\(food)", "food"), (column, time, "time")]
+        let numbers = stats.map { textSprite($0.1, size: 46, weight: .black, color: ink) }
+        let widest = numbers.map(\.size.width).max() ?? 1
+        let shrink = min(1, width * 0.25 / widest)
+        for ((x, _, word), number) in zip(stats, numbers) {
+            number.setScale(shrink)
             number.position = CGPoint(x: x, y: 26)
             panel.addChild(number)
-            let label = textSprite(word, size: 16, weight: .bold, color: softInk)
+            let label = textSprite(word, size: 17, weight: .bold, color: softInk)
             label.position = CGPoint(x: x, y: -10)
             panel.addChild(label)
         }
-        let divider = SKShapeNode(rectOf: CGSize(width: 2, height: 58), cornerRadius: 1)
-        divider.fillColor = softInk.withAlphaComponent(0.22)
-        divider.strokeColor = .clear
-        divider.position = CGPoint(x: 0, y: 10)
-        panel.addChild(divider)
 
         let row = bestRow(best, valueSize: 19)
         row.position = CGPoint(x: 0, y: -62)
@@ -286,10 +288,13 @@ final class Hud: SKScene {
         banner.addChild(title)
         panel.addChild(banner)
 
+        // Hidden until the death pause ends; see showRetry.
         let again = pawButton("Dash again")
+        again.name = "again"
         again.position = CGPoint(x: 0, y: -182)
+        again.alpha = 0
+        again.setScale(0.6)
         panel.addChild(again)
-        pulse(again)
 
         // Pop in: the panel bounces up, the ribbon drops onto it a beat later.
         panel.setScale(0.6)
@@ -332,6 +337,18 @@ final class Hud: SKScene {
                 .repeatForever(wobble)
             ]))
         }
+    }
+
+    /// The death pause is over: the "Dash again" button bounces in like the panel did.
+    func showRetry() {
+        guard let again = panel.childNode(withName: "again") else { return }
+        again.run(.sequence([
+            .group([
+                .fadeIn(withDuration: 0.15),
+                .sequence([.scale(to: 1.06, duration: 0.18), .scale(to: 1, duration: 0.1)])
+            ]),
+            .run { [weak self] in self?.pulse(again) }
+        ]))
     }
 
     func hidePanel() {

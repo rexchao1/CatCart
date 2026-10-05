@@ -40,6 +40,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private enum Intent {
         case tap, left, right, up, down
+        /// A finger lifted without swiping. On the death panel, this is what restarts.
+        case lift
         /// Test-only: a stumble from CATCART_SWIPES, to see the bottle without aiming for a bump.
         case stumble
     }
@@ -174,6 +176,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// the bottom of the screen. Further back than `bottleGone` it's hidden.
     private let bottleChaseZ: Float = 1.7
     private let bottleGone: Float = 7
+    /// After a crash, taps are ignored this long, so mashing the screen or a swipe
+    /// that was already under way can't start a new run by accident. The "Dash
+    /// again" button pops in when it ends, so you can see when tapping works again.
+    private let deathPause: Float = 1.0
 
     private let cameraBase = SIMD3<Float>(0, 2.9, 4.4)
     private let cameraPitch: Float = -0.055
@@ -182,26 +188,33 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let homeEye = SIMD3<Float>(0.9, 1.6, -2.75)
     private let homeTarget = SIMD3<Float>(0, 0.9, 0.25)
 
-    /// How far into the run's difficulty we are, 0 at the start to 1 after two and a
-    /// half minutes. It climbs fast early and settles, like Subway Surfers: 0.36 at
-    /// 30 s, 0.64 at 1 min, 0.96 at 2 min. Speed, gaps, the jump, and how much the
+    /// Seconds into a run when the difficulty ramp is full.
+    private let rampSeconds: Float = 75
+
+    /// How far into the run's difficulty we are, 0 at the start to 1 after 75 s.
+    /// It climbs fast early and settles, like Subway Surfers: 0.20 at 8 s, 0.46 at
+    /// 20 s, 0.64 at 30 s, 0.84 at 45 s. Speed, gaps, the jump, and how much the
     /// obstacle mixes favor hard ones all read this one number.
     private var ramp: Float {
-        let x = min(1, timeAlive / 150)
+        let x = min(1, timeAlive / rampSeconds)
         return 1 - (1 - x) * (1 - x)
     }
 
     /// Running speed in meters per second. 17 at the start, 34 at full ramp
-    /// (about 23 at 30 s, 28 at 1 min, 33 at 2 min).
+    /// (about 20 at 8 s, 28 at 30 s, 31 at 45 s). Past 75 s it keeps creeping up
+    /// 1 m/s every 30 s, to 38 at about 3:15, so a long run still gets harder.
+    /// Only speed creeps: the jump, clear height, and gaps read `ramp` and stay at
+    /// their full-ramp values.
     private func runSpeed() -> Float {
-        17 + 17 * ramp
+        let overtime = min(4, max(0, timeAlive - rampSeconds) / 30)
+        return 17 + 17 * ramp + overtime
     }
 
     /// Distances inside an obstacle mix are written for 17 m/s. They stretch with
     /// speed, but less than speed does (the square root), so the faster she goes,
     /// the less time there is between things: 19 m between two coyotes is 1.1 s at
-    /// the start and about 0.8 s at top speed. That squeeze is most of what makes a
-    /// long run hard.
+    /// the start, about 0.8 s at 34 m/s, and 0.75 s at 38. That squeeze is most of
+    /// what makes a long run hard.
     private var spacingScale: Float { (runSpeed() / 17).squareRoot() }
     /// Cat trees stretch fully with speed, so a ride lasts about the same time.
     private var treeScale: Float { runSpeed() / 17 }
@@ -379,6 +392,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var homeRotation = simd_quatf(angle: 0, axis: [0, 1, 0])
 
     private var timeAlive: Float = 0
+    /// Seconds since she crashed, counted on the render thread while the panel is up.
+    private var deadClock: Float = 0
+    /// True once a touch began after the death pause. Lifting it without a swipe restarts.
+    private var restartArmed = false
     private var meters: Float = 0
     private var food = 0
     private var bestScore = 0
@@ -462,14 +479,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Test-only: CATCART_SWIPES="2:left,3.5:up,5:right" plays swipes at those
     /// seconds after launch through the same touch code a finger uses.
-    /// "4:stumble" trips her as if she clipped something.
+    /// "4:stumble" trips her as if she clipped something. "6:tap" is a finger down
+    /// and up without moving. "5:press" puts a finger down and "7:release" lifts it,
+    /// for a touch that's still down when she crashes.
     private func scheduleTestSwipes() {
         guard let script = ProcessInfo.processInfo.environment["CATCART_SWIPES"] else { return }
         for step in script.split(separator: ",") {
             let parts = step.split(separator: ":")
             guard parts.count == 2, let at = Double(parts[0]) else { continue }
-            if parts[1] == "stumble" {
-                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in self?.enqueue(.stumble) }
+            let touches: [String: (GameScene) -> Void] = [
+                "stumble": { game in game.enqueue(.stumble) },
+                "tap": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)); game.touchEnded() },
+                "press": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)) },
+                "release": { game in game.touchEnded() }
+            ]
+            if let touch = touches[String(parts[1])] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
+                    if let self { touch(self) }
+                }
                 continue
             }
             let move: CGPoint
@@ -924,6 +951,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0)
             updateCamera(dt: dt)
         case .dead:
+            let wasPaused = deadClock < deathPause
+            deadClock += dt
+            if wasPaused && deadClock >= deathPause {
+                hud.showRetry()
+            }
             updateChase(dt: dt)
             updateCamera(dt: dt)
         }
@@ -1154,7 +1186,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // Two coyotes close together: a double hop, with food in the air between.
         Wave(tier: 1, spawns: [c(1, 0), c(1, 19), air(1, 9), air(1, 28), f(0, 6), f(2, 12)]),
 
-        // Hard (from 25 s): back-to-back moves.
+        // Hard (from 20 s): back-to-back moves.
         // Three coyotes is a forced jump. Rare, per the PRD.
         Wave(tier: 2, spawns: [c(0, 0), c(1, 0), c(2, 0)], weight: 0.4),
         Wave(tier: 2, spawns: [t(0, 0), t(1, 0), c(2, 0), c(2, 19)]),
@@ -1196,15 +1228,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// so the tree pool stays small.
     private static let treeSizes: [Float] = [11, 14, 17, 20, 24, 28, 32]
 
-    /// Seconds into a run when medium and hard mixes join.
+    /// Seconds into a run when medium and hard mixes join. Fixed in seconds, so a
+    /// change to the ramp doesn't move them.
     private let mediumFrom: Float = 8
-    private let hardFrom: Float = 25
+    private let hardFrom: Float = 20
 
     /// Picks a mix for this point in the run: easy ones fade out, harder ones fade in.
+    /// Easy mixes thin out and reach their floor of 15% weight at about 28 s, so they never vanish.
     private func pickWave() -> Int {
         if let forced = e2eWave, Self.waves.indices.contains(forced) { return forced }
         let tierWeight: [Float] = [
-            max(0.25, 1 - 1.2 * ramp),
+            max(0.15, 1 - 1.4 * ramp),
             timeAlive >= mediumFrom ? min(1, 0.4 + ramp) : 0,
             timeAlive >= hardFrom ? 0.4 + 1.3 * ramp : 0
         ]
@@ -1283,8 +1317,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             reach = max(reach, at)
         }
         // A short beat after the mix, in seconds so it means the same at any speed:
-        // 0.9 s at the start, down to 0.25 s at top speed, so mixes run into each
-        // other. The per-lane gaps above are what keep the joins fair.
+        // 0.9 s at the start, 0.45 s at 30 s, down to 0.25 s at full ramp (75 s),
+        // so mixes run into each other. The per-lane gaps above are what keep the joins fair.
         let gapSeconds: Float = max(0.25, 0.9 - 0.7 * ramp)
         return reach + runSpeed() * gapSeconds
     }
@@ -1933,6 +1967,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             fflush(stdout)
         }
         state = .dead
+        deadClock = 0
+        restartArmed = false
+        // Drop any swipe or tap still waiting for a frame: it was meant for the run.
+        inputLock.lock()
+        pending.removeAll()
+        inputLock.unlock()
         jumping = false
         onPlatform = false
         duckTimer = 0
@@ -1955,7 +1995,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             bestScore = score
             UserDefaults.standard.set(bestScore, forKey: Self.bestKey)
         }
-        hud.showDead(score: score, food: food, best: bestScore, newBest: newBest)
+        // Real time survived, without the CATCART_TIME test head start.
+        let seconds = Int(timeAlive - e2eStartTime)
+        hud.showDead(score: score, food: food, seconds: seconds, best: bestScore, newBest: newBest)
     }
 
     private func shakeCamera() {
@@ -2045,6 +2087,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     func touchEnded() {
+        if swipeStart != nil && !swipeConsumed {
+            enqueue(.lift)
+        }
+        swipeStart = nil
+    }
+
+    /// The system took the touch away (a call, a system gesture). Not a lift.
+    func touchCancelled() {
         swipeStart = nil
     }
 
@@ -2065,8 +2115,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             case (.ready, .tap):
                 startRun()
             case (.dead, .tap):
-                resetRun()
-                startRun()
+                // Only a touch that starts after the pause can restart, and only
+                // once it lifts without swiping.
+                restartArmed = deadClock >= deathPause
+            case (.dead, .lift):
+                if restartArmed {
+                    resetRun()
+                    startRun()
+                }
+            case (.dead, .left), (.dead, .right), (.dead, .up), (.dead, .down):
+                // A swipe on the panel never restarts.
+                restartArmed = false
             case (.running, .left):
                 moveLane(-1)
             case (.running, .right):
