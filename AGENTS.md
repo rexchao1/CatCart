@@ -18,6 +18,8 @@ Read `docs/plans/pacing-and-trees.md` before changing the difficulty ramp, cat t
 
 Read `docs/plans/duck.md` before changing ducking or the low things you duck under. It has the heights that make the duck fair.
 
+Read `docs/plans/camera.md` before changing the run camera, its framing, or the sky. It explains why the cat blocks the road ahead in a jump and tracks the fix.
+
 Read `docs/plans/performance.md` before adding models, effects, or anything spawned mid-run. It says what must be built up front and how to measure hitches with `CATCART_PERF=1`.
 
 ## Food and coyote assets
