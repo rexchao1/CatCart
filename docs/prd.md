@@ -56,13 +56,19 @@ A blocked lane is a coyote prowling under a low thing (the coyote is 1.14 m tall
 
 The chaser is a green plastic spray bottle with a white trigger head, built in code in `buildBottle` in `GameScene.swift`. It hops along just behind the cart, to her right and turned side-on so the trigger and nozzle show, and leans over her to spray when it catches her.
 
-Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. Some hang in the air over a coyote, at jump height, with no shadow; only a jump reaches them. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
+Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. Some hang in the air over a coyote, at jump height (2.0 m), with no shadow; only a jump reaches them. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
 
 The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`. Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
 
 ### Cat trees
 
 These are the Subway Surfers trains. A cat tree occupies one lane, with a flat carpeted top the cart can roll on. Sisal posts, cubbies, hanging toys are fine as long as the rideable roof is obvious.
+
+Two heights and a ramp (Rex's call, 2026-10-05):
+
+- Short tree: one story of cubbies, roof at 2.0 m (was 1.5). A jump from the ground lands on it.
+- Tall tree: two stories of cubbies on a carpeted shelf, roof at 3.5 m. A jump from the ground can't reach it, so its front is a wall. You get up by a ramp or by jumping from a short tree's roof. It is the one tree that should read as a tower you smash into from the road, with its flat roof still obvious.
+- Ramp: a carpeted slope with sisal rope along its edges, climbing from the road to the front of a tree. It is 8 m long at the start speed and stretches with speed like a tree, so the climb takes about half a second.
 
 This is the hard piece. The sprite, the lane width, and the ride length have to agree. If the tree looks like a tall tower you smash into, or like a rug with no height, it is wrong.
 
@@ -105,7 +111,7 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 ### Jump
 
-Swipe up to jump. The jump is a real arc: up to about 1.9 m and back down under gravity. How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.8 s at the start and quickens to about 0.62 s at top speed, so it never carries her over half the road. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
+Swipe up to jump. The jump is a real arc: up to 2.6 m and back down under gravity (Rex's call 2026-10-05, was 1.9 m: "I just want the animation higher"). How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.8 s at the start and quickens to about 0.62 s at full ramp (75 s), so it never carries her over half the road. The higher peak kept the same airtime, so she just leaves the ground faster and falls harder; every timing stayed the same. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
@@ -122,11 +128,13 @@ Until she has ducked under her first low thing, ever, a bobbing "Swipe down to d
 - A tree fills one lane for a stretch of depth.
 - Hit the front at ground height: crash.
 - Jump as the front arrives: land on the roof and stay up without holding jump.
-- Ride until the back of the tree passes, then drop to the ground.
-- Swipe to a neighbor lane that also has a tree: stay up.
+- Ride until the back of the tree passes, then drop to the ground, or onto the next tree if one is right behind at the same height or lower.
+- Swipe to a neighbor lane that also has a tree as high or lower: stay up, or drop onto it.
 - Swipe to a lane with no tree: fall. If a coyote is there, crash.
-- Swipe into the side of a tree from the ground: bump off it, stay in your lane, and stumble.
+- Swipe into the side of a tree from the ground, or of a tall tree from a short roof: bump off it, stay in your lane, and stumble. A jump high enough gets you on instead.
 - Jump from a tree to hop to another tree or to clear something.
+- A tall tree's front is a crash from the ground, even in a jump. From a short roof, a jump reaches it.
+- Roll onto a ramp in its lane and ride up onto the roof with no jump. Jumping on a ramp works too. From the side, you can steer onto a ramp where it is still low (under 0.5 m); higher up the side is a bump and a stumble.
 
 Never block all three lanes with no jump, duck, or ride out. Two trees plus a food lane is fine. Three coyotes is a forced jump, and three low things a forced duck, both used rarely. Two blocked lanes with the third open is fine; that's a forced steer.
 
@@ -145,7 +153,7 @@ Like Subway Surfers: easy to start, hard the longer you last, and endless. Rex's
 
 ### Coyotes
 
-Jump over. If you are high enough, or already on a tree, they pass under. High enough is 0.8 m at the start and 1.0 m at top speed, so the useful part of a jump narrows as the run goes on. A coyote has a body 1.5 m long, and you have to stay clear the whole time it's beside you. If you are on the ground in their lane when they reach you, crash.
+Jump over. If you are high enough, or already on a tree, they pass under. High enough is 1.1 m at the start and 1.37 m at full ramp (75 s), so the useful part of a jump narrows as the run goes on (was 0.8 and 1.0 with the 1.9 m jump, scaled with it so it plays the same). A coyote has a body 1.5 m long, and you have to stay clear the whole time it's beside you. If you are on the ground in their lane when they reach you, crash.
 
 ### Crash or stumble
 
@@ -156,7 +164,7 @@ Jump over. If you are high enough, or already on a tree, they pass under. High e
 
 ### Food
 
-Touch to collect, even in the air or on a tree. Food hanging in the air needs a jump (or a tree roof) to reach. +1 food, +25 score, a pop. Food after a coyote in the same lane, or over one, is a reward for jumping, and food on the open side of a blocked lane rewards steering.
+Touch to collect, even in the air or on a tree. Food hanging in the air sits at 2.0 m and needs a jump (above 1.23 m) or a tree roof to reach. Food on a roof or a ramp sits on the carpet. +1 food, +25 score, a pop. Food after a coyote in the same lane, or over one, is a reward for jumping, and food on the open side of a blocked lane rewards steering.
 
 ### Score
 
@@ -201,7 +209,7 @@ Defaults in the game today:
 | Player | 3D kitten from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | 3D turquoise salmon can (`wet_food.scn`) |
-| Cat tree | cubby tree with a flat roof |
+| Cat tree | cubby tree with a flat roof, short (one story) and tall (two), carpeted ramp |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
 | App icon | farm-road (kitten in cart, blue sky), from `scripts/make_icon.py` |
@@ -221,7 +229,7 @@ This is the live game, not a wish list.
 - 3D kitten in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
-- Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Ride, hop to a neighbor tree, fall off the end, bump off the side.
+- Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, fall off the end, bump off the side. Tall trees and ramps are in three trial mixes for now; the real tree mixes come next.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
 - Speed from 17 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
@@ -287,6 +295,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. A mesh merged with `flattenedClone` starts with no materials and picks up its pieces' ones later, so call `applyLook` on the pieces before merging (the cat tree and low things do). Calling it on the merged node finds nothing, and the obstacle floats unbent over the far road until it is close (fixed 2026-10-04). When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `"6:tap"` is a finger down and up in place; `"5:press"` and `"7:release"` hold a finger down between them, for testing a touch that's still down when she crashes. Without god mode, two stumbles about half a second apart crash her, which is the easy way to reach the death panel. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `"6:tap"` is a finger down and up in place; `"5:press"` and `"7:release"` hold a finger down between them, for testing a touch that's still down when she crashes. Without god mode, two stumbles about half a second apart crash her, which is the easy way to reach the death panel. With it set, each swipe and stumble prints a `CATCART` line with the run time, lane, height, and the top she's riding; the run time reads about 0.08 s behind the swipe time, which counts from launch. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`). The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
 
 If you add a mechanic, write the player-facing rule here in the same commit.
