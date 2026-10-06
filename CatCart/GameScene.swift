@@ -191,12 +191,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let jumpPeak: Float = 2.6
     /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. It always peaks
     /// at 2.6 m (Rex, 2026-10-05, was 1.9: "I just want the animation higher").
-    /// Takeoff to landing is 0.8 s at the start and quickens to about 0.62 s at full
-    /// ramp (75 s), so a jump doesn't sail over half the road when it's fast. It
-    /// stays there while speed keeps creeping up after that. Raising the
-    /// peak with the airtime unchanged only makes takeoff faster and gravity
-    /// stronger, so every timing stays the same.
-    private var jumpAirtime: Float { 0.9 - 0.12 * ramp }
+    /// Takeoff to landing is 0.68 s at the start and quickens to about 0.59 s at full
+    /// ramp (75 s) (Rex, 2026-10-05: "increase the gravity, drop faster, start
+    /// faster"; was 0.9 to 0.78 s, so gravity is about 1.75x and takeoff 1.3x).
+    /// It stays there while speed keeps creeping up after that.
+    private var jumpAirtime: Float { 0.68 - 0.09 * ramp }
     private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
     private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
     /// A swipe up this soon before landing is remembered and fires on touchdown.
