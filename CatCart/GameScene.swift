@@ -21,6 +21,63 @@ import UIKit
 // It runs on SceneKit's render thread, so touches (main thread) are queued and
 // handled at the start of the next frame.
 
+/// The cat power-ups. Each one is a pickup on the road, like a can of food:
+/// roll into it and it works for a while. The rules are in docs/prd.md under
+/// "Power-ups"; docs/plans/power-ups.md says why they work this way.
+enum PowerUp: CaseIterable {
+    /// Fizz Rocket: the La Croix cans in her box fizz like rockets and she
+    /// flies over everything, steering through a trail of food in the sky.
+    case rocket
+    /// Can Magnet: food from every lane flies to her.
+    case magnet
+    /// Pounce Springs: springs under the wheels and much higher jumps, high
+    /// enough to land on a tall cat tree from the road.
+    case pounce
+    /// Nine Lives: a halo that saves her from one crash.
+    case lives
+
+    var title: String {
+        switch self {
+        case .rocket: return "Fizz Rocket!"
+        case .magnet: return "Can Magnet!"
+        case .pounce: return "Pounce Springs!"
+        case .lives: return "Nine Lives!"
+        }
+    }
+
+    /// The picture on its HUD timer.
+    var icon: String {
+        switch self {
+        case .rocket: return "🚀"
+        case .magnet: return "🧲"
+        case .pounce: return "🐾"
+        case .lives: return "😇"
+        }
+    }
+
+    /// How long it lasts. Nine Lives also ends when it saves her, and the
+    /// rocket waits for a clear road before it lands her.
+    var seconds: Float {
+        switch self {
+        case .rocket: return 5
+        case .magnet: return 10
+        case .pounce: return 10
+        case .lives: return 20
+        }
+    }
+
+    /// Test-only: names for CATCART_SWIPES ("4:rocket") and CATCART_POWER.
+    init?(testName: String) {
+        switch testName {
+        case "rocket": self = .rocket
+        case "magnet": self = .magnet
+        case "pounce": self = .pounce
+        case "lives": self = .lives
+        default: return nil
+        }
+    }
+}
+
 final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private enum State {
@@ -36,6 +93,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         /// Something low across the lane (scaffold, log, table, clothesline).
         /// She has to duck into the box to pass under it.
         case low
+        /// A power-up pickup. Placed and collected like food.
+        case power
     }
 
     private enum Intent {
@@ -44,6 +103,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case lift
         /// Test-only: a stumble from CATCART_SWIPES, to see the bottle without aiming for a bump.
         case stumble
+        /// Test-only: a power-up from CATCART_SWIPES ("4:rocket"), as if she rolled into one.
+        case power(PowerUp)
     }
 
     /// One thing on the track. `z` is its front edge (the end nearest the cat).
@@ -73,6 +134,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var high = false
         /// Already clipped her once (a stumble), so it can't clip her again.
         var hit = false
+        /// Which power-up a `.power` pickup is.
+        var power: PowerUp?
+        /// Food in the Fizz Rocket's trail, up at flying height.
+        var sky = false
+        /// Food the Can Magnet has caught: it flies to her instead of riding its lane.
+        var pulled = false
+        /// Height the pickup was placed at, for the magnet to pull it from.
+        var baseY: Float = 0
         var back: Float { z - length }
         /// Where the mesh sits: a ramped tree's mesh starts where the slope ends.
         var nodeZ: Float { z - rampLength }
@@ -188,14 +257,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// it low. Only a jump from a short roof gets within this of a tall one. For
     /// short-tree heights the old, more generous rule holds (see `canReach`).
     private let highReach: Float = 0.5
-    private let jumpPeak: Float = 2.6
+    private let normalPeak: Float = 2.6
+    /// Pounce Springs jump this high, over a tall tree's roof (3.5 m), and stay
+    /// in the air a little longer.
+    private let pouncePeak: Float = 4.4
+    private let pounceAirtime: Float = 1.18
+    private var pouncing: Bool { powerLeft[.pounce] != nil }
+    private var jumpPeak: Float { pouncing ? pouncePeak : normalPeak }
     /// A jump is a real arc: up at jumpSpeed, pulled down by gravity. It always peaks
     /// at 2.6 m (Rex, 2026-10-05, was 1.9: "I just want the animation higher").
     /// Takeoff to landing is 0.68 s at the start and quickens to about 0.59 s at full
     /// ramp (75 s) (Rex, 2026-10-05: "increase the gravity, drop faster, start
     /// faster"; was 0.9 to 0.78 s, so gravity is about 1.75x and takeoff 1.3x).
     /// It stays there while speed keeps creeping up after that.
-    private var jumpAirtime: Float { 0.68 - 0.09 * ramp }
+    private var jumpAirtime: Float { (0.68 - 0.09 * ramp) * (pouncing ? pounceAirtime : 1) }
     private var gravity: Float { 8 * jumpPeak / (jumpAirtime * jumpAirtime) }
     private var jumpSpeed: Float { 4 * jumpPeak / jumpAirtime }
     /// A swipe up this soon before landing is remembered and fires on touchdown.
@@ -237,6 +312,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// that was already under way can't start a new run by accident. The "Dash
     /// again" button pops in when it ends, so you can see when tapping works again.
     private let deathPause: Float = 1.0
+
+    // Power-ups (see PowerUp at the top of the file).
+    /// The first power-up shows up in a mix this far into a run, then one every
+    /// 14 to 20 s, like Subway Surfers: often enough to look forward to.
+    private let firstPower: Float = 9
+    /// Fizz Rocket flying height: over a tall tree's roof (3.5 m) with room to
+    /// spare, low enough that the camera stays under the ceiling beams.
+    private let flightHeight: Float = 4.8
+    /// The rocket's trail of food: one can every this many meters, out to this
+    /// far (about 28 cans, so the trail never needs more than the food pool holds).
+    private let skyFoodGap: Float = 4.5
+    private let skyTrailLength: Float = 140
+    /// It lands her only once nothing stands on the road this close ahead.
+    private let landingClear: Float = 30
+    /// After landing from the rocket, or being saved by Nine Lives, nothing can
+    /// crash her for this long.
+    private let graceTime: Float = 1.2
+    /// The Can Magnet pulls food this far ahead, from every lane.
+    private let magnetRange: Float = 26
 
     // Run camera, framed like Subway Surfers: high and looking down, so she sits
     // low on screen and the road runs up past her to the crest. It sits this high
@@ -469,6 +563,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var runCameraX: Float = 0
     private var homeRotation = simd_quatf(angle: 0, axis: [0, 1, 0])
 
+    /// Seconds left on each power-up she has, and how long each one started
+    /// with (the rocket's depends on the road), for its timer badge.
+    private var powerLeft: [PowerUp: Float] = [:]
+    private var powerTotal: [PowerUp: Float] = [:]
+    /// Seconds of run until a mix may carry the next power-up.
+    private var untilPower: Float = 0
+    private var lastPower: PowerUp?
+    /// True while the Fizz Rocket holds her up at flying height.
+    private var flying = false
+    /// Seconds nothing can crash her (after a rocket landing or a saved life).
+    private var graceLeft: Float = 0
+    /// How long the rocket has flown on past its time, waiting for a clear road.
+    private var rocketOvertime: Float = 0
+    /// Last power-up state sent to the HUD, so it's only sent when it changes.
+    private var powerShown = ""
+
     private var timeAlive: Float = 0
     /// Seconds since she crashed, counted on the render thread while the panel is up.
     private var deadClock: Float = 0
@@ -520,6 +630,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                      what, timeAlive, meters, lane, height, floorY))
         fflush(stdout)
     }
+    /// Test-only: CATCART_POWER=rocket makes every power-up that one, and
+    /// CATCART_POWEREVERY=5 puts one in a mix every 5 s (the first at 5 s).
+    private let e2ePower = PowerUp(testName: ProcessInfo.processInfo.environment["CATCART_POWER"] ?? "")
+    private let e2ePowerEvery = Float(ProcessInfo.processInfo.environment["CATCART_POWEREVERY"] ?? "")
     /// Test-only: CATCART_PERF=1 prints frame times and every hitch.
     private var frameLog = FrameLog(enabled: ProcessInfo.processInfo.environment["CATCART_PERF"] == "1")
 
@@ -571,6 +685,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let pills = PillBar()
         view.addSubview(pills)
         hud.pills = pills
+        let powers = PowerBar()
+        view.addSubview(powers)
+        hud.powerBar = powers
         view.isPlaying = true
         view.rendersContinuously = true
         view.preferredFramesPerSecond = 60
@@ -595,7 +712,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// "4:stumble" trips her as if she clipped something. "6:tap" is a finger down
     /// and up without moving. "5:press" puts a finger down and "7:release" lifts it,
     /// for a touch that's still down when she crashes. "3:freeze" stops the game on
-    /// that frame for 3 s, so a screenshot catches an exact moment.
+    /// that frame for 3 s, so a screenshot catches an exact moment. "4:rocket",
+    /// "4:magnet", "4:pounce", and "4:lives" give her that power-up.
     private func scheduleTestSwipes() {
         guard let script = ProcessInfo.processInfo.environment["CATCART_SWIPES"] else { return }
         for step in script.split(separator: ",") {
@@ -612,6 +730,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 "press": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)) },
                 "release": { game in game.touchEnded() }
             ]
+            if let power = PowerUp(testName: String(parts[1])) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
+                    self?.enqueue(.power(power))
+                }
+                continue
+            }
             if let touch = touches[String(parts[1])] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
                     if let self { touch(self) }
@@ -728,7 +852,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         catNode = cart.node
         catNode.enumerateHierarchy { node, _ in
             node.categoryBitMask |= Self.playerLightBit
-            node.castsShadow = true
+            // Her fur shells stay out of the shadow map: the skin under them
+            // already casts her shadow, and eight more copies would only cost.
+            node.castsShadow = node.name != "fur"
         }
         applyLook(to: catNode)
         playerRoot.addChildNode(catNode)
@@ -820,12 +946,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Gives every material the curved-world bend and the fog. Each material is
     /// only touched once, even if a hundred copies of a building share it.
+    /// A material's own surface shader (the kitten's fur) is kept.
     private func applyLook(to root: SCNNode) {
         root.enumerateHierarchy { node, _ in
             guard let geometry = node.geometry else { return }
             for m in geometry.materials where !lookSeen.contains(ObjectIdentifier(m)) {
                 lookSeen.insert(ObjectIdentifier(m))
-                m.shaderModifiers = [.geometry: Self.bendModifier, .fragment: Self.fogModifier]
+                var shaders = m.shaderModifiers ?? [:]
+                shaders[.geometry] = Self.bendModifier
+                shaders[.fragment] = Self.fogModifier
+                m.shaderModifiers = shaders
                 m.setValue(NSValue(scnVector3: SCNVector3(fogNow.x, fogNow.y, fogNow.z)), forKey: "fogColor")
                 lookMaterials.append(m)
             }
@@ -1006,7 +1136,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         // Packed, chained mixes can put well over a dozen coyotes on the road.
         stock("coyote", 22) { makeCoyote() }
-        stock("food", 28) { makeFood() }
+        // Road food, plus the Fizz Rocket's trail in the sky (up to 28 cans).
+        stock("food", 60) { makeFood() }
+        for power in PowerUp.allCases {
+            stock(powerKey(power), 2) { makePowerUp(power) }
+        }
         // Short trees: at least four of each size (the staircase uses three of one
         // size, and the mix before can still have one on the road; a 333 ms stall
         // at 60 s with three). The sizes a fast run lands on get more: from about
@@ -1094,7 +1228,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             homeClock += dt
             moveTrack(dz: runSpeed() * 0.45 * dt)
             updateWorldBlend()
-            cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0)
+            cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0, idle: true)
             updateCamera(dt: dt)
         case .dead:
             let wasPaused = deadClock < deathPause
@@ -1123,10 +1257,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         updateWorldBlend()
 
         untilWave -= dz
-        if untilWave <= 0 {
+        // While the Fizz Rocket flies, no new mixes come, so the road is clear
+        // when she lands. They start again in time to arrive just after.
+        let holdWaves = flying && (powerLeft[.rocket] ?? 0) > (spawnAhead - 40) / speed
+        if untilWave <= 0 && !holdWaves {
             frameLog.note("wave")
             untilWave = spawnWave(at: spawnAhead)
         }
+        untilPower -= dt
+        updatePowers(dt: dt)
 
         updateJump(dt: dt)
         if jumpBuffer > 0 {
@@ -1167,7 +1306,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // up with the floor she's on (road, roof, or ramp slope) plus some of a jump.
         // It goes up quickly, so she never sits over the crest after landing on a
         // tall roof, and comes down slower, so landings feel weighty.
-        let goalY = floorY + max(0, height - floorY) * cameraJumpFollow
+        // Flying, it rises with most of her height: she sits a little higher on
+        // screen, about where the top of a jump off a tall tree puts her.
+        let goalY = floorY + max(0, height - floorY) * (flying ? 0.8 : cameraJumpFollow)
         let rate: Float = goalY > cameraLift ? 12 : 5
         cameraLift += (goalY - cameraLift) * min(1, rate * dt)
         let goalX = visualX * 0.6
@@ -1192,6 +1333,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateJump(dt: Float) {
+        if flying {
+            // Fizz Rocket: rise to flying height and hold it there. No gravity.
+            height += (flightHeight - height) * min(1, 3.5 * dt)
+            vy = 0
+        } else {
+            fall(dt: dt)
+        }
+        settle(dt: dt)
+    }
+
+    /// Gravity, and landing on the road or a roof.
+    private func fall(dt: Float) {
         vy -= gravity * dt
         height += vy * dt
         if height < floorY {
@@ -1212,7 +1365,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 jumping = false
             }
         }
+    }
 
+    /// Landing puff, squash and stretch, road bumps, ramp lean, and the shadow.
+    private func settle(dt: Float) {
         let airborne = height - floorY > 0.15
         if wasAirborne && !airborne && vy <= 0 {
             landSquash = 1
@@ -1236,6 +1392,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if let p = platform, p.rampLength > 0, p.z < p.rampLength, height - floorY < 0.05 {
             lean = atan(p.roof / p.rampLength)
         }
+        // Flying, the box rides nose up and rocks a little on the fizz.
+        if flying { lean = 0.09 + 0.03 * sin(timeAlive * 6) }
         pitch += (lean - pitch) * min(1, 14 * dt)
         catNode.eulerAngles.x = pitch
 
@@ -1298,8 +1456,21 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func moveItems(dz: Float, dt: Float) {
+        let magnet = powerLeft[.magnet] != nil
         for item in items {
             item.z += dz
+            if magnet && item.kind == .food && !item.pulled && item.z > -magnetRange && item.z < 0 {
+                item.pulled = true
+            }
+            if item.pulled {
+                // The Can Magnet reels it in: across to her lane and up to her,
+                // faster than the road, faster still as it nears.
+                item.z += dz * 0.8
+                let t = max(0, min(1, 1 + item.z / magnetRange))
+                let e = t * t
+                item.node.position.x = laneX(item.lane) + (visualX - laneX(item.lane)) * e
+                item.node.position.y = item.baseY + (height + 0.6 - item.baseY) * e
+            }
             item.node.position.z = item.nodeZ
             // Transparent pictures draw far to near so they overlap correctly.
             if item.picture != nil || item.node.childNode(withName: "picture", recursively: false) != nil {
@@ -1653,7 +1824,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for spawn in wave.spawns where spawn.kind != .food {
             let lane = place(spawn.lane)
             let front = base + ahead(spawn)
-            for item in items where item.lane == lane && item.kind != .food {
+            for item in items where item.lane == lane && item.kind != .food && item.kind != .power {
                 let lastEnd = item.length - item.z
                 let gap: Float = (item.kind == .coyote && spawn.kind == .low ? 24 : 19) * scale
                 shift = max(shift, lastEnd + gap - front)
@@ -1669,7 +1840,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             placed.append((tree, start, item))
             reach = max(reach, start + tree.total)
         }
-        for spawn in wave.spawns where spawn.kind != .tree {
+        // Now and then one can of food in the mix is a power-up instead. Food is
+        // always somewhere she can reach (on the open side, over a coyote, on a
+        // roof), so the power-up is too.
+        var powerSpawn: Int?
+        var powerKind: PowerUp?
+        let foodSpawns = wave.spawns.indices.filter { wave.spawns[$0].kind == .food }
+        if untilPower <= 0, !flying, let pick = foodSpawns.randomElement() {
+            powerSpawn = pick
+            powerKind = nextPower()
+            untilPower = e2ePowerEvery ?? Float.random(in: 14...20)
+        }
+        for (index, spawn) in wave.spawns.enumerated() where spawn.kind != .tree {
             let lane = place(spawn.lane)
             var at = ahead(spawn) + shift
             var y: Float = 0
@@ -1688,7 +1870,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 at = host.start + depth
                 y = host.item.top(at: depth) + 0.05
             }
-            addItem(spawn.kind, lane: lane, z: -base - at, high: spawn.high, y: y)
+            if index == powerSpawn {
+                addItem(.power, lane: lane, z: -base - at, high: spawn.high, y: y, power: powerKind)
+            } else {
+                addItem(spawn.kind, lane: lane, z: -base - at, high: spawn.high, y: y)
+            }
             reach = max(reach, at)
         }
         // A short beat after the mix, in seconds so it means the same at any speed:
@@ -1714,6 +1900,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 return String(format: "coyote lane %d %.1f", item.lane, front)
             case .low:
                 return String(format: "low lane %d %.1f", item.lane, front)
+            case .power:
+                return String(format: "power %@ lane %d %.1f", "\(item.power ?? .magnet)", item.lane, front)
             }
         }
         print(String(format: "CATCART mix %d at run %.2f s: ", lastWave, timeAlive) + parts.joined(separator: "; "))
@@ -1724,7 +1912,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// `y` lifts food onto a roof.
     @discardableResult
     private func addItem(_ kind: Kind, lane: Int, z: Float, length: Float = 0, roof: Float = 0,
-                         rampLength: Float = 0, high: Bool = false, y: Float = 0) -> TrackItem {
+                         rampLength: Float = 0, high: Bool = false, y: Float = 0,
+                         power: PowerUp? = nil) -> TrackItem {
         let node: SCNNode
         var picture: SCNMaterial?
         var rampNode: SCNNode?
@@ -1736,6 +1925,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         case .food:
             node = takeNode("food") { self.makeFood() }
+        case .power:
+            let p = power ?? .magnet
+            node = takeNode(powerKey(p)) { self.makePowerUp(p) }
         case .tree:
             let treeLength = length - rampLength
             node = takeNode(treeKey(length: treeLength, roof: roof)) { self.makeCatTree(length: treeLength, roof: roof) }
@@ -1763,9 +1955,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         item.picture = picture
         item.frame = Int.random(in: 0..<4)
         item.high = high
+        item.power = power
         // Food in the air hangs where a jump's arc carries her, and drops its shadow.
         node.childNode(withName: "shadow", recursively: false)?.isHidden = high
         node.position = SCNVector3(laneX(lane), high ? airFoodY : y, item.nodeZ)
+        item.baseY = node.position.y
+        // A pooled node may have been knocked away (hidden) or caught popping in.
+        node.isHidden = false
+        node.removeAction(forKey: "pop")
+        node.scale = SCNVector3(1, 1, 1)
         scene.rootNode.addChildNode(node)
         items.append(item)
         return item
@@ -2287,6 +2485,338 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return root
     }
 
+    // MARK: - Power-ups
+
+    // Like Subway Surfers' jetpack, coin magnet, super sneakers, and the board
+    // that saves you once, but cat ones. One shows up in a mix every 14 to 20 s,
+    // in place of a can of food, so it's always somewhere she can reach. Each
+    // lasts a few seconds, shows a timer under the pills, and stacks with the
+    // others. No score multiplier (Rex's call, 2026-10-04).
+
+    private func powerKey(_ power: PowerUp) -> String { "power-\(power)" }
+
+    /// A different one from last time, and not one she already has.
+    private func nextPower() -> PowerUp {
+        if let forced = e2ePower { return forced }
+        let fresh = PowerUp.allCases.filter { $0 != lastPower && powerLeft[$0] == nil }
+        let pick = fresh.randomElement() ?? PowerUp.allCases.randomElement()!
+        lastPower = pick
+        return pick
+    }
+
+    private func startPower(_ power: PowerUp) {
+        let fresh = powerLeft[power] == nil
+        powerLeft[power] = power.seconds
+        powerTotal[power] = power.seconds
+        cart.show(power, true)
+        hud.showCallout(power.title)
+        haptic(.heavy)
+        puff(at: SCNVector3(visualX, height + 1.1, 0.2), count: 20, color: powerColor(power))
+        testLog("power \(power)")
+        if power == .rocket && fresh { takeOff() }
+        showPowers()
+    }
+
+    private func endPower(_ power: PowerUp) {
+        powerLeft[power] = nil
+        cart.show(power, false)
+        if power == .rocket && flying {
+            // Coast down to the road (or onto a roof). Gravity does the rest, and
+            // nothing can hurt her until a moment after she lands.
+            flying = false
+            jumping = true
+            vy = -1
+            graceLeft = max(graceLeft, graceTime + 0.5)
+            testLog("rocket landing")
+        }
+        showPowers()
+    }
+
+    /// Everything off, for a crash or a new run.
+    private func endAllPowers() {
+        powerLeft.removeAll()
+        powerTotal.removeAll()
+        flying = false
+        graceLeft = 0
+        cart.hidePowerLooks()
+        catNode.opacity = 1
+        showPowers()
+    }
+
+    /// Counts each power-up down and ends it when its time is up. The rocket
+    /// keeps her flying past its time until the road ahead is clear to land on.
+    private func updatePowers(dt: Float) {
+        graceLeft = max(0, graceLeft - dt)
+        for (power, left) in powerLeft {
+            let now = left - dt
+            if now > 0 {
+                powerLeft[power] = now
+            } else if power == .rocket && rocketOvertime < 2.5 && !roadClear(within: landingClear) {
+                // Not yet: something's on the road where she'd come down. Fly on
+                // a little, up to 2.5 s; the grace after landing covers the rest.
+                rocketOvertime += dt
+                powerLeft[power] = 0.001
+            } else {
+                endPower(power)
+            }
+        }
+        // She blinks while nothing can hurt her.
+        catNode.opacity = graceLeft > 0 && Int(graceLeft * 12) % 2 == 0 ? 0.45 : 1
+        showPowers()
+    }
+
+    /// Nothing to land on badly this close ahead, in any lane.
+    private func roadClear(within distance: Float) -> Bool {
+        !items.contains { item in
+            (item.kind == .coyote || item.kind == .low || item.kind == .tree)
+                && item.z > -distance && item.back < 2
+        }
+    }
+
+    /// The timers under the pills, sent only when one moves a notch.
+    private func showPowers() {
+        let list = PowerUp.allCases.compactMap { power -> (icon: String, left: CGFloat)? in
+            guard let left = powerLeft[power] else { return nil }
+            return (power.icon, CGFloat(max(0, min(1, left / (powerTotal[power] ?? power.seconds)))))
+        }
+        let key = list.map { "\($0.icon)\(Int($0.left * 40))" }.joined()
+        guard key != powerShown else { return }
+        powerShown = key
+        hud.setPowers(list)
+    }
+
+    /// Fizz Rocket takes off: up she goes, the bottle gives up, and a trail of
+    /// food appears in the sky.
+    private func takeOff() {
+        flying = true
+        rocketOvertime = 0
+        jumping = false
+        platform = nil
+        duckTimer = 0
+        jumpBuffer = 0
+        vy = 0
+        chaseTimer = 0
+        // Fly long enough to pass everything already on the road (a mix reaches
+        // well past where it appears), so she comes down on clear road: 5 s, or
+        // up to 9 s when the road is busy or she's slow.
+        let speed = runSpeed()
+        let farthest = items.filter { $0.kind == .coyote || $0.kind == .low || $0.kind == .tree }
+            .map { -$0.back }.max() ?? 0
+        let seconds = min(9, max(PowerUp.rocket.seconds, (farthest + 8) / speed))
+        powerLeft[.rocket] = seconds
+        powerTotal[.rocket] = seconds
+        spawnSkyTrail(distance: min(skyTrailLength, speed * seconds))
+    }
+
+    /// The rocket's reward: a winding line of food at flying height, from just
+    /// ahead to about where she'll land. It moves over a lane every few cans,
+    /// so she steers through the sky to eat it all.
+    private func spawnSkyTrail(distance: Float) {
+        var trailLane = lane
+        var run = 0
+        var ahead: Float = 16
+        while ahead < distance {
+            let item = addItem(.food, lane: trailLane, z: -ahead, high: true)
+            item.sky = true
+            item.baseY = flightHeight + 0.35
+            item.node.position.y = item.baseY
+            // They pop in rather than appear.
+            item.node.scale = SCNVector3(0.2, 0.2, 0.2)
+            item.node.runAction(.scale(to: 1, duration: 0.3), forKey: "pop")
+            run += 1
+            if run >= 5 {
+                run = 0
+                trailLane = trailLane == 1 ? (Bool.random() ? 0 : 2) : 1
+            }
+            ahead += skyFoodGap
+        }
+    }
+
+    /// Nine Lives: instead of crashing she loses the halo. Whatever she ran into
+    /// is knocked out of the way (or, for a tree, she bounds up onto it), and
+    /// for a moment nothing can hurt her. False if she has no life to spare.
+    private func saveLife() -> Bool {
+        guard state == .running, powerLeft[.lives] != nil else { return false }
+        endPower(.lives)
+        graceLeft = graceTime
+        chaseTimer = 0
+        stumbleGrace = 0.4
+        testLog("saved by nine lives")
+        for item in items where (item.kind == .coyote || item.kind == .low)
+                && (item.lane == lane || item.lane == bodyLane) && item.z > -3 && item.back < 2 {
+            item.hit = true
+            item.node.isHidden = true
+            puff(at: SCNVector3(laneX(item.lane), 0.8, item.z), count: 16, color: UIColor(white: 1, alpha: 0.9))
+        }
+        if let tree = items.first(where: { $0.kind == .tree && $0.lane == lane && overlapsCat($0) }) {
+            popOnto(tree)
+        }
+        hud.showCallout("Saved!")
+        haptic(.heavy)
+        puff(at: SCNVector3(visualX, height + 1.6, 0.2), count: 24, color: powerColor(.lives))
+        return true
+    }
+
+    /// Up onto a tree's top in one bound, for when she can't crash into it.
+    private func popOnto(_ tree: TrackItem) {
+        platform = tree
+        height = tree.topAtCat
+        vy = 0
+        jumping = false
+        landSquash = 1
+        puff(at: SCNVector3(visualX, height + 0.2, 0.2), count: 12, color: UIColor(white: 1, alpha: 0.9))
+    }
+
+    private func powerColor(_ power: PowerUp) -> UIColor {
+        switch power {
+        case .rocket: return UIColor(red: 0.55, green: 0.86, blue: 1.0, alpha: 1)
+        case .magnet: return UIColor(red: 1.0, green: 0.38, blue: 0.40, alpha: 1)
+        case .pounce: return UIColor(red: 0.52, green: 0.92, blue: 0.56, alpha: 1)
+        case .lives: return UIColor(red: 1.0, green: 0.84, blue: 0.36, alpha: 1)
+        }
+    }
+
+    /// A power-up on the road: its model turning slowly inside a soft colored
+    /// bubble, bobbing, so it reads as something special next to a can of food.
+    private func makePowerUp(_ power: PowerUp) -> SCNNode {
+        let node = SCNNode()
+        let bob = SCNNode()
+        bob.position = SCNVector3(0, 0.8, 0)
+        node.addChildNode(bob)
+        let model = powerModel(power)
+        bob.addChildNode(model)
+        model.runAction(.repeatForever(.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 2.4)))
+        bob.runAction(.repeatForever(.sequence([
+            .moveBy(x: 0, y: 0.16, z: 0, duration: 0.5),
+            .moveBy(x: 0, y: -0.16, z: 0, duration: 0.5)
+        ])))
+
+        let bubble = SCNSphere(radius: 0.6)
+        bubble.segmentCount = 24
+        let skin = SCNMaterial()
+        skin.diffuse.contents = powerColor(power)
+        skin.lightingModel = .constant
+        skin.transparency = 0.24
+        skin.blendMode = .alpha
+        skin.writesToDepthBuffer = false
+        bubble.materials = [skin]
+        let shell = SCNNode(geometry: bubble)
+        shell.castsShadow = false
+        shell.renderingOrder = 20
+        bob.addChildNode(shell)
+
+        applyLook(to: node)
+        let shadow = shadowNode(width: 0.9, length: 0.7)
+        shadow.name = "shadow"
+        node.addChildNode(shadow)
+        return node
+    }
+
+    private func powerModel(_ power: PowerUp) -> SCNNode {
+        let model = SCNNode()
+        func shiny(_ color: UIColor, glow: CGFloat = 0.25) -> SCNMaterial {
+            let m = SCNMaterial()
+            m.diffuse.contents = color
+            m.emission.contents = color
+            m.emission.intensity = glow
+            m.specular.contents = UIColor(white: 1, alpha: 1)
+            m.shininess = 0.6
+            m.lightingModel = .blinn
+            return m
+        }
+        func add(_ geometry: SCNGeometry, _ material: SCNMaterial, at p: SCNVector3) -> SCNNode {
+            geometry.materials = [material]
+            let n = SCNNode(geometry: geometry)
+            n.position = p
+            model.addChildNode(n)
+            return n
+        }
+        switch power {
+        case .rocket:
+            // A La Croix can with a red nose cone and fins: a sparkling-water rocket.
+            let tilt = SCNNode()
+            tilt.eulerAngles.z = 0.35
+            model.addChildNode(tilt)
+            let wrap = shiny(UIColor(red: 0.82, green: 0.93, blue: 0.99, alpha: 1), glow: 0.15)
+            wrap.diffuse.contents = UIImage(named: "canWrap") ?? UIColor(red: 0.82, green: 0.93, blue: 0.99, alpha: 1)
+            let lid = shiny(UIColor(white: 0.86, alpha: 1))
+            let can = SCNCylinder(radius: 0.17, height: 0.5)
+            can.materials = [wrap, lid, lid]
+            tilt.addChildNode(SCNNode(geometry: can))
+            let red = shiny(UIColor(red: 0.95, green: 0.26, blue: 0.32, alpha: 1))
+            let cone = SCNNode(geometry: SCNCone(topRadius: 0, bottomRadius: 0.17, height: 0.24))
+            cone.geometry?.materials = [red]
+            cone.position = SCNVector3(0, 0.37, 0)
+            tilt.addChildNode(cone)
+            for i in 0..<3 {
+                let a = Float(i) * 2 * .pi / 3
+                let fin = SCNNode(geometry: SCNBox(width: 0.025, height: 0.2, length: 0.15, chamferRadius: 0.01))
+                fin.geometry?.materials = [red]
+                fin.position = SCNVector3(sin(a) * 0.19, -0.2, cos(a) * 0.19)
+                fin.eulerAngles.y = a
+                tilt.addChildNode(fin)
+            }
+            let puffMat = shiny(UIColor(white: 1, alpha: 1), glow: 0.6)
+            for (i, r) in [0.09, 0.07, 0.05].enumerated() {
+                let b = SCNNode(geometry: SCNSphere(radius: CGFloat(r)))
+                b.geometry?.materials = [puffMat]
+                b.position = SCNVector3(Float(i) * 0.04 - 0.04, -0.36 - Float(i) * 0.1, 0)
+                tilt.addChildNode(b)
+            }
+        case .magnet:
+            // A big red horseshoe magnet with silver tips.
+            let shoe = UIBezierPath()
+            shoe.addArc(withCenter: .zero, radius: 0.27, startAngle: 0, endAngle: .pi, clockwise: true)
+            shoe.addLine(to: CGPoint(x: -0.27, y: -0.2))
+            shoe.addLine(to: CGPoint(x: -0.13, y: -0.2))
+            shoe.addLine(to: CGPoint(x: -0.13, y: 0))
+            shoe.addArc(withCenter: .zero, radius: 0.13, startAngle: .pi, endAngle: 0, clockwise: false)
+            shoe.addLine(to: CGPoint(x: 0.13, y: -0.2))
+            shoe.addLine(to: CGPoint(x: 0.27, y: -0.2))
+            shoe.close()
+            let shape = SCNShape(path: shoe, extrusionDepth: 0.14)
+            shape.chamferRadius = 0.02
+            _ = add(shape, shiny(UIColor(red: 0.92, green: 0.16, blue: 0.2, alpha: 1)), at: SCNVector3(0, 0.05, 0))
+            let silver = shiny(UIColor(white: 0.92, alpha: 1), glow: 0.3)
+            for x: Float in [-0.2, 0.2] {
+                _ = add(SCNBox(width: 0.14, height: 0.09, length: 0.15, chamferRadius: 0.015), silver,
+                        at: SCNVector3(x, -0.19, 0))
+            }
+        case .pounce:
+            // A coil spring with a pink paw print on top.
+            let steel = shiny(UIColor(red: 0.6, green: 0.88, blue: 0.62, alpha: 1))
+            for i in 0..<6 {
+                let ring = add(SCNTorus(ringRadius: 0.2, pipeRadius: 0.035), steel,
+                               at: SCNVector3(0, -0.3 + Float(i) * 0.1, 0))
+                ring.eulerAngles.z = i % 2 == 0 ? 0.16 : -0.16
+            }
+            let pink = shiny(UIColor(red: 1.0, green: 0.62, blue: 0.72, alpha: 1), glow: 0.3)
+            _ = add(SCNCylinder(radius: 0.2, height: 0.06), shiny(UIColor(white: 0.97, alpha: 1)), at: SCNVector3(0, 0.29, 0))
+            _ = add(SCNCylinder(radius: 0.08, height: 0.04), pink, at: SCNVector3(0, 0.33, 0.03))
+            for (x, z) in [(-0.1, -0.06), (-0.035, -0.12), (0.035, -0.12), (0.1, -0.06)] as [(Float, Float)] {
+                _ = add(SCNCylinder(radius: 0.034, height: 0.04), pink, at: SCNVector3(x, 0.33, z))
+            }
+        case .lives:
+            // A pink heart with a gold halo over it.
+            let heart = UIBezierPath()
+            heart.move(to: CGPoint(x: 0, y: -0.26))
+            heart.addCurve(to: CGPoint(x: -0.26, y: 0.08), controlPoint1: CGPoint(x: -0.1, y: -0.15),
+                           controlPoint2: CGPoint(x: -0.26, y: -0.06))
+            heart.addArc(withCenter: CGPoint(x: -0.13, y: 0.08), radius: 0.13, startAngle: .pi, endAngle: 0, clockwise: false)
+            heart.addArc(withCenter: CGPoint(x: 0.13, y: 0.08), radius: 0.13, startAngle: .pi, endAngle: 0, clockwise: false)
+            heart.addCurve(to: CGPoint(x: 0, y: -0.26), controlPoint1: CGPoint(x: 0.26, y: -0.06),
+                           controlPoint2: CGPoint(x: 0.1, y: -0.15))
+            heart.close()
+            let shape = SCNShape(path: heart, extrusionDepth: 0.13)
+            shape.chamferRadius = 0.03
+            _ = add(shape, shiny(UIColor(red: 1.0, green: 0.36, blue: 0.52, alpha: 1)), at: SCNVector3(0, -0.04, 0))
+            let ring = add(SCNTorus(ringRadius: 0.17, pipeRadius: 0.03), shiny(UIColor(red: 1.0, green: 0.82, blue: 0.3, alpha: 1), glow: 0.7),
+                           at: SCNVector3(0, 0.32, 0))
+            ring.eulerAngles.x = 0.25
+        }
+        return model
+    }
+
     // MARK: - Spray bottle
 
     /// A green plastic spray bottle, the thing every cat dreads. Built from simple
@@ -2385,6 +2915,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             chaseTimer = chaseTime
             return
         }
+        if saveLife() { return }
         sprayed = true
         crash()
         // A burst of mist over her head.
@@ -2443,13 +2974,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 if state != .running { return }
                 continue
             }
-            if item.kind == .food {
+            if item.kind == .food || item.kind == .power {
+                if item.pulled {
+                    if item.z >= -0.8 { collect(item) }
+                    continue
+                }
                 guard item.lane == lane, prevZ < 0, item.z >= 0 else { continue }
                 // Food in the air is only reached high in a jump (or from a tree roof).
                 if item.high && height < airFoodReach { continue }
+                // The rocket's trail is only reached flying, and the road is out of
+                // reach from up there.
+                if item.sky && height < flightHeight - 1.2 { continue }
+                if flying && !item.sky { continue }
                 collect(item)
                 continue
             }
+            // Up on the rocket everything passes under her, and right after a
+            // landing or a saved life nothing can hurt her.
+            if flying || graceLeft > 0 { continue }
             let heading = item.lane == lane
             let inside = item.lane == bodyLane
             guard heading || inside, !item.hit, touchesCat(item) else { continue }
@@ -2476,6 +3018,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func handleTree(_ item: TrackItem, prevZ: Float) {
+        // The rocket flies over trees; she only gets on one once she lands.
+        if flying { return }
         let heading = item.lane == lane
         let inside = item.lane == bodyLane
         guard heading || inside else { return }
@@ -2491,6 +3035,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // Too low for it: a short tree's front from the road, or a tall tree's
         // front from the road or a short roof, is a wall.
         guard entered, !item.hit else { return }
+        if graceLeft > 0 {
+            // She can't crash right now, so she bounds up onto it instead.
+            if heading { popOnto(item) }
+            return
+        }
         if heading && inside {
             if !e2eGod { crash() }
         } else {
@@ -2509,15 +3058,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func collect(_ item: TrackItem) {
-        food += 1
-        let spot = SCNVector3(laneX(item.lane), item.node.position.y + 0.6, 0.2)
+        let spot = SCNVector3(item.node.position.x, item.node.position.y + 0.6, 0.2)
         recycle(item)
         items.removeAll { $0 === item }
+        if let power = item.power {
+            startPower(power)
+            return
+        }
+        food += 1
         haptic(.light)
         puff(at: spot, count: 12, color: UIColor(red: 1.0, green: 0.72, blue: 0.30, alpha: 1))
     }
 
     private func crash() {
+        if saveLife() { return }
         if e2ePilot || e2eSwipes {
             print("CATCART crash t=\(timeAlive) speed=\(runSpeed()) wave=\(lastWave) meters=\(Int(meters))")
             fflush(stdout)
@@ -2533,6 +3087,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         platform = nil
         duckTimer = 0
         chaseTimer = 0
+        endAllPowers()
         hideDuckHint()
         dust.birthRate = 0
         DispatchQueue.main.async {
@@ -2688,10 +3243,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             case (.running, .right):
                 moveLane(1)
             case (.running, .up):
+                // Up on the rocket there's nothing to jump off.
+                if flying { break }
                 if !jump() { jumpBuffer = jumpBufferTime }
             case (.running, .stumble):
                 stumble(bounceBack: false)
+            case (.running, .power(let power)):
+                startPower(power)
             case (.running, .down):
+                if flying { break }
                 jumpBuffer = 0
                 // On the ground it's a duck. In the air it only brings her down.
                 if !jumping && height - floorY < 0.05 {
@@ -2710,7 +3270,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         guard next != lane else { return }
         // The tree beside her in that lane, if any. Its top where she is: a roof,
         // or partway up a ramp.
-        let beside = items.filter { $0.kind == .tree && $0.lane == next && overlapsCat($0) }
+        // Flying, she's above every tree, so a lane change is only a lane change.
+        let beside = flying ? nil : items.filter { $0.kind == .tree && $0.lane == next && overlapsCat($0) }
             .max { $0.topAtCat < $1.topAtCat }
         if let tree = beside, !canReach(tree) {
             // Bumped the side of a cat tree that's higher than she can get onto
@@ -2816,6 +3377,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         state = .running
         timeAlive = e2eStartTime
         lastWave = -1
+        untilPower = e2ePowerEvery ?? firstPower
         // Fill the road ahead now, so there's something to do right away.
         var next = firstWaveAhead
         while next < spawnAhead {
@@ -2844,6 +3406,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         chaseTimer = 0
         stumbleGrace = 0
         sprayed = false
+        endAllPowers()
+        lastPower = nil
         bottleZ = 9
         bottle.isHidden = true
         timeAlive = 0

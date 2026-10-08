@@ -22,6 +22,12 @@ Read `docs/plans/camera.md` before changing the run camera, its framing, or the 
 
 Read `docs/plans/performance.md` before adding models, effects, or anything spawned mid-run. It says what must be built up front and how to measure hitches with `CATCART_PERF=1`.
 
+Read `docs/plans/power-ups.md` before changing power-ups, where food spawns, or flying. It has the rules for the Fizz Rocket, Can Magnet, Pounce Springs, and Nine Lives.
+
+## Kitten asset
+
+The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v3.py`. After changing her, run `scripts/build_kitten.sh`, then `swift scripts/check_game_art.swift`. Her fur is shell fur built into `cat_kitten.scn` by `scripts/build_kitten.swift`; `docs/plans/kitten-blender-study.md` explains it. Changing her size means rechecking the duck heights in `docs/plans/duck.md`.
+
 ## Food and coyote assets
 
 The editable sources are `art/models/food/wet-food.blend` and `art/models/coyote/coyote.blend`. After editing either, run `scripts/build_art.sh`, then `swift scripts/check_game_art.swift` and `scripts/e2e_visual.sh`. The export strips the studio and strand fur and adds the coyote gallop. It never saves over the Blender sources.

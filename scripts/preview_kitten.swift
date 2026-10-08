@@ -5,7 +5,7 @@
 //   /tmp/preview_kitten [output-dir]
 //
 // Writes kitten_game.png (the run camera, behind and above), kitten_front.png
-// (home screen 3/4 front), and kitten_side.png.
+// (home screen 3/4 front), kitten_face.png (close on her face), and kitten_side.png.
 
 import SceneKit
 import AppKit
@@ -99,4 +99,5 @@ func shot(_ name: String, from: SCNVector3, at: SCNVector3, fov: CGFloat, size: 
 let portrait = CGSize(width: 1179, height: 2556)
 shot("kitten_game.png", from: SCNVector3(0, 2.6, 4.0), at: SCNVector3(0, 0.5, -3), fov: 56, size: portrait)
 shot("kitten_front.png", from: SCNVector3(1.2, 1.1, -2.6), at: SCNVector3(0, 0.55, 0), fov: 30, size: portrait)
+shot("kitten_face.png", from: SCNVector3(0.4, 0.95, -1.55), at: SCNVector3(0, 0.76, -0.1), fov: 24, size: CGSize(width: 1200, height: 1200))
 shot("kitten_side.png", from: SCNVector3(3.2, 0.5, 0), at: SCNVector3(0, 0.45, 0), fov: 30, size: CGSize(width: 1200, height: 1200))

@@ -5,7 +5,8 @@
 #       --python scripts/blender/add_collar.py -- /tmp/collar-preview
 #
 # Run it as often as you like: it deletes the old "Collar ..." objects first.
-# Pass --nosave to only render. The objects are named so export_kitten.py can
+# Pass --nosave to only render, --norender to skip the previews.
+# scripts/blender/make_kitten_v3.py runs it with both, before it saves. The objects are named so export_kitten.py can
 # fold them into the head (the collar leans with her head in the game):
 #   Collar strap  (material kittenCollar)
 #   Collar stitch (kittenCollarStitch)
@@ -25,6 +26,7 @@ from mathutils import Vector, Matrix
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = next((a for a in args if not a.startswith("--")), "/tmp/collar-preview")
 SAVE = "--nosave" not in args
+RENDER = "--norender" not in args
 
 CENTER = Vector((0.0, -0.005, 0.595))
 RX, RY = 0.172, 0.208           # strap centerline, just outside the fur
@@ -168,22 +170,23 @@ if SAVE:
     bpy.ops.wm.save_mainfile()
     print("saved", bpy.data.filepath)
 
-os.makedirs(OUT, exist_ok=True)
-scene.render.engine = "BLENDER_EEVEE"
-scene.render.resolution_x, scene.render.resolution_y = 700, 700
-scene.render.film_transparent = False
-if hasattr(scene, "eevee"):
-    scene.eevee.taa_render_samples = 16
-for shot, cam_name in (("front", "Front camera"), ("rear", "Rear camera")):
-    cam = bpy.data.objects.get(cam_name)
-    if cam is None:
-        continue
-    # Look at the neck so the collar fills the frame.
-    cam.location = (0.0, 1.25, 0.95) if shot == "front" else (-0.35, -1.25, 1.05)
-    d = CENTER + Vector((0, 0, 0.02)) - cam.location
-    cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
-    cam.data.lens = 85
-    scene.camera = cam
-    scene.render.filepath = os.path.join(OUT, shot + ".png")
-    bpy.ops.render.render(write_still=True)
-    print("rendered", scene.render.filepath)
+if RENDER:
+    os.makedirs(OUT, exist_ok=True)
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x, scene.render.resolution_y = 700, 700
+    scene.render.film_transparent = False
+    if hasattr(scene, "eevee"):
+        scene.eevee.taa_render_samples = 16
+    for shot, cam_name in (("front", "Front camera"), ("rear", "Rear camera")):
+        cam = bpy.data.objects.get(cam_name)
+        if cam is None:
+            continue
+        # Look at the neck so the collar fills the frame.
+        cam.location = (0.0, 1.25, 0.95) if shot == "front" else (-0.35, -1.25, 1.05)
+        d = CENTER + Vector((0, 0, 0.02)) - cam.location
+        cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
+        cam.data.lens = 85
+        scene.camera = cam
+        scene.render.filepath = os.path.join(OUT, shot + ".png")
+        bpy.ops.render.render(write_still=True)
+        print("rendered", scene.render.filepath)

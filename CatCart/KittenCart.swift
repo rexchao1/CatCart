@@ -5,8 +5,12 @@ import UIKit
 //
 // The box is built here from SceneKit boxes and cylinders, wrapped in the
 // textures from scripts/make_cart_textures.py. The kitten is a Blender model
-// (Models/cat_kitten.scn, from scripts/blender/make_cat.py) with separate
-// head, ears, eyes, and tail nodes, so we can make her twitch and blink in code.
+// (Models/cat_kitten.scn, from scripts/blender/make_kitten_v3.py through
+// scripts/build_kitten.sh) with separate head, ears, eyes, and tail nodes, so
+// we can make her twitch and blink in code. Her fur is built into the model.
+//
+// The power-up looks live here too: springs under the wheels, a halo, a magnet
+// over her head, and fizz from the cans. GameScene turns them on and off.
 //
 // Coordinates: meters, +y up. She faces -z, away from the run camera.
 // The node's origin is on the ground under the middle of the box.
@@ -49,6 +53,28 @@ final class KittenCart {
     /// True when the Blender kitten loaded. False means a simple stand-in is showing.
     private(set) var hasModel = false
 
+    /// Seconds since she was built, for the idle wiggles.
+    private var clock: Float = 0
+    /// The home screen's curious head tilt, eased in and out.
+    private var idleTilt: Float = 0
+    private var eyes: [SCNNode] = []
+    /// Seconds to the next blink, and how far into a blink she is.
+    private var blinkWait: Float = 2
+    private var blinkClock: Float = -1
+    private var blinkLength: Float = 0.16
+
+    // Power-up looks. See GameScene's PowerUp for what each one does.
+    private let springs = SCNNode()
+    private var springsOn = false
+    /// How far the springs lift the box right now, eased.
+    private var springLift: Float = 0
+    /// Fully stretched, the springs hold the box this far up.
+    private let springHeight: Float = 0.3
+    private let halo = SCNNode()
+    private let magnet = SCNNode()
+    private let fizzNode = SCNNode()
+    private var fizz: SCNParticleSystem?
+
     init() {
         body.scale = SCNVector3(Self.scale, Self.scale, Self.scale)
         node.addChildNode(body)
@@ -56,13 +82,16 @@ final class KittenCart {
         buildWheels()
         buildCans()
         loadKitten()
+        buildPowerLooks()
     }
 
     // MARK: - Per frame
 
     /// Spin the wheels with the road, lean her head into lane changes, and sink
-    /// her into the box while `ducking` is true.
-    func update(dt: Float, speed: Float, rolling: Bool, tilt: Float, ducking: Bool = false) {
+    /// her into the box while `ducking` is true. `idle` is the home screen, where
+    /// she tilts her head at you and gives slow cat blinks.
+    func update(dt: Float, speed: Float, rolling: Bool, tilt: Float, ducking: Bool = false, idle: Bool = false) {
+        clock += dt
         // A springy chase toward the goal: stiff enough to duck in under a tenth of
         // a second, loose enough to overshoot on the way up, so she pops out.
         let goal: Float = ducking ? 1 : 0
@@ -72,7 +101,9 @@ final class KittenCart {
         if let kitten, let kittenBody {
             kitten.position.y = seatY - Self.duckSink * min(1, duck)
             // Below 0 (the pop on the way up) she stretches a little taller.
-            let squash = 1 - Self.duckSquash * duck
+            // She breathes, a slow small swell of her chest.
+            let breath = 1 + 0.012 * sin(clock * 2.4)
+            let squash = (1 - Self.duckSquash * duck) * breath
             kittenBody.scale.y = squash
             for holder in unsquashed { holder.scale.y = 1 / squash }
         }
@@ -80,9 +111,44 @@ final class KittenCart {
             let spin = speed / wheelRadius * dt
             for w in wheels { w.eulerAngles.x -= spin }
         }
+        // On the home screen she tilts her head one way, then the other, like a
+        // kitten working out what you are.
+        let tiltGoal: Float = idle ? 0.16 * sin(clock * 0.55) : 0
+        idleTilt += (tiltGoal - idleTilt) * min(1, 3 * dt)
         if let head {
-            head.eulerAngles.z = headRest.z + tilt * 1.2
+            head.eulerAngles.z = headRest.z + tilt * 1.2 + idleTilt
             head.eulerAngles.y = headRest.y - tilt * 0.8
+            head.eulerAngles.x = headRest.x - abs(idleTilt) * 0.25
+        }
+        updateBlink(dt: dt, idle: idle)
+        updatePowerLooks(dt: dt, ducking: ducking)
+    }
+
+    /// Quick blinks every few seconds. On the home screen some are slow: eyes
+    /// half shut, held, then open, which is how a cat says she trusts you.
+    private func updateBlink(dt: Float, idle: Bool) {
+        guard !eyes.isEmpty else { return }
+        if blinkClock < 0 {
+            blinkWait -= dt
+            guard blinkWait <= 0 else { return }
+            blinkClock = 0
+            blinkLength = idle && Float.random(in: 0...1) < 0.45 ? 1.3 : 0.16
+            blinkWait = Float.random(in: 2.5...5.5)
+        }
+        blinkClock += dt
+        let t = min(1, blinkClock / blinkLength)
+        let open: Float
+        if blinkLength > 0.5 {
+            // Slow: down to a sleepy squint, hold it, back up.
+            let close = min(1, t / 0.3) * (t < 0.7 ? 1 : max(0, 1 - (t - 0.7) / 0.3))
+            open = 1 - 0.72 * close
+        } else {
+            open = max(0.08, abs(t - 0.5) * 2)
+        }
+        for e in eyes { e.scale.y = open }
+        if t >= 1 {
+            blinkClock = -1
+            for e in eyes { e.scale.y = 1 }
         }
     }
 
@@ -257,7 +323,7 @@ final class KittenCart {
         headRest = h.eulerAngles
     }
 
-    /// Little life while she rides: tail sway, ear flicks, blinks.
+    /// Little life while she rides: tail sway, ear flicks. Blinks are in updateBlink.
     private func startIdle(_ kitten: SCNNode) {
         if let tail = kitten.childNode(withName: "tail", recursively: true) {
             // Held up like a happy cat instead of draped over the back wall,
@@ -281,14 +347,164 @@ final class KittenCart {
                 flick
             ])))
         }
-        let eyes = ["eyeL", "eyeR"].compactMap { kitten.childNode(withName: $0, recursively: true) }
-        let blink = SCNAction.sequence([
-            .wait(duration: 3, withRange: 3),
-            .customAction(duration: 0.16) { _, t in
-                let k = Float(abs(t / 0.16 - 0.5) * 2)
-                for e in eyes { e.scale.y = max(0.08, k) }
+        // Blinks are driven from update, so the home screen can slow them down.
+        eyes = ["eyeL", "eyeR"].compactMap { kitten.childNode(withName: $0, recursively: true) }
+    }
+
+    // MARK: - Power-up looks
+
+    /// Turns a power-up's look on or off. The springs ease in and out in
+    /// update; the rest pop.
+    func show(_ power: PowerUp, _ on: Bool) {
+        switch power {
+        case .pounce: springsOn = on
+        case .lives: halo.isHidden = !on
+        case .magnet: magnet.isHidden = !on
+        case .rocket: fizz?.birthRate = on ? 90 : 0
+        }
+    }
+
+    /// Tucks every look away, for a new run.
+    func hidePowerLooks() {
+        for p in PowerUp.allCases { show(p, false) }
+        springLift = 0
+        body.position.y = 0
+        springs.isHidden = true
+    }
+
+    private func updatePowerLooks(dt: Float, ducking: Bool) {
+        // Springs: stretched out under the wheels, squeezed flat while she ducks
+        // (so her head still clears low things), with a little bounce.
+        let goal: Float = springsOn ? (ducking ? 0.04 : springHeight) : 0
+        springLift += (goal - springLift) * min(1, 10 * dt)
+        let bounce: Float = springsOn ? 0.035 * abs(sin(clock * 9)) : 0
+        let lift = springLift + bounce * springLift / springHeight
+        body.position.y = lift
+        springs.isHidden = springLift < 0.01
+        springs.scale.y = max(0.01, lift / springHeight)
+        if !halo.isHidden {
+            halo.eulerAngles.y = clock * 1.6
+            halo.position.y = haloY + 0.02 * sin(clock * 3)
+        }
+        if !magnet.isHidden {
+            magnet.position.y = magnetY + 0.05 * sin(clock * 4)
+            magnet.eulerAngles.z = 0.2 * sin(clock * 2.5)
+        }
+    }
+
+    private var haloY: Float = 0
+    private var magnetY: Float = 0
+
+    private func glowMaterial(_ color: UIColor, glow: CGFloat = 0.6) -> SCNMaterial {
+        let m = SCNMaterial()
+        m.diffuse.contents = color
+        m.emission.contents = color.withAlphaComponent(1)
+        m.emission.intensity = glow
+        m.specular.contents = UIColor(white: 1, alpha: 1)
+        m.shininess = 0.7
+        m.lightingModel = .blinn
+        return m
+    }
+
+    private func buildPowerLooks() {
+        // Springs: one coil under each wheel, built at full stretch and squeezed
+        // by scaling. They hang off the unscaled node, so they're real size.
+        let steel = glowMaterial(UIColor(red: 0.78, green: 0.82, blue: 0.88, alpha: 1), glow: 0.15)
+        let coil = SCNTorus(ringRadius: 0.11, pipeRadius: 0.022)
+        coil.materials = [steel]
+        let x = (Float(boxWidth) / 2 - 0.12) * Self.scale
+        let z = (Float(boxDepth) / 2 - 0.16) * Self.scale
+        for (sx, sz) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] as [(Float, Float)] {
+            for i in 0..<5 {
+                let ring = SCNNode(geometry: coil)
+                ring.position = SCNVector3(sx * x, springHeight * (Float(i) + 0.5) / 5, sz * z)
+                // Tipped a little, alternating, so it reads as one coil, not rings.
+                ring.eulerAngles.z = i % 2 == 0 ? 0.18 : -0.18
+                springs.addChildNode(ring)
             }
-        ])
-        eyes.first?.runAction(.repeatForever(blink))
+        }
+        springs.isHidden = true
+        node.addChildNode(springs)
+
+        // Nine Lives: a gold halo over her head that leans with it.
+        let gold = glowMaterial(UIColor(red: 1.0, green: 0.82, blue: 0.3, alpha: 1), glow: 0.9)
+        let ringGeo = SCNTorus(ringRadius: 0.17, pipeRadius: 0.022)
+        ringGeo.materials = [gold]
+        halo.geometry = ringGeo
+        halo.name = "glow"
+        halo.isHidden = true
+        let headHolder = head ?? body
+        // The head's pivot is her neck; the top of her head is about 0.4 above it.
+        haloY = head != nil ? 0.5 : seatY + 1.15
+        halo.position = SCNVector3(0, haloY, head != nil ? -0.04 : 0)
+        headHolder.addChildNode(halo)
+
+        // Can Magnet: a red horseshoe magnet bobbing over her right shoulder.
+        let red = glowMaterial(UIColor(red: 0.92, green: 0.16, blue: 0.2, alpha: 1), glow: 0.35)
+        let silver = glowMaterial(UIColor(white: 0.9, alpha: 1), glow: 0.3)
+        let shoe = UIBezierPath()
+        shoe.addArc(withCenter: .zero, radius: 0.12, startAngle: 0, endAngle: .pi, clockwise: true)
+        shoe.addLine(to: CGPoint(x: -0.12, y: -0.1))
+        shoe.addLine(to: CGPoint(x: -0.06, y: -0.1))
+        shoe.addLine(to: CGPoint(x: -0.06, y: 0))
+        shoe.addArc(withCenter: .zero, radius: 0.06, startAngle: .pi, endAngle: 0, clockwise: false)
+        shoe.addLine(to: CGPoint(x: 0.06, y: -0.1))
+        shoe.addLine(to: CGPoint(x: 0.12, y: -0.1))
+        shoe.close()
+        let shape = SCNShape(path: shoe, extrusionDepth: 0.06)
+        shape.chamferRadius = 0.01
+        shape.materials = [red]
+        // The arch is on top and the open end points down at her.
+        magnet.addChildNode(SCNNode(geometry: shape))
+        for tx: Float in [-0.09, 0.09] {
+            let tip = SCNNode(geometry: SCNBox(width: 0.06, height: 0.04, length: 0.065, chamferRadius: 0.008))
+            tip.geometry?.materials = [silver]
+            tip.position = SCNVector3(tx, -0.12, 0)
+            magnet.addChildNode(tip)
+        }
+        magnetY = seatY + 1.25
+        magnet.position = SCNVector3(0.42, magnetY, 0)
+        magnet.isHidden = true
+        body.addChildNode(magnet)
+
+        // Fizz Rocket: the cans fizz out the bottom of the box like rockets.
+        let ps = SCNParticleSystem()
+        ps.particleImage = Self.bubbleImage()
+        ps.birthRate = 0
+        ps.particleLifeSpan = 0.55
+        ps.particleLifeSpanVariation = 0.2
+        ps.particleSize = 0.09
+        ps.particleSizeVariation = 0.05
+        ps.particleColor = UIColor(red: 0.85, green: 0.95, blue: 1.0, alpha: 0.95)
+        ps.emitterShape = SCNBox(width: boxWidth * 0.9, height: 0.02, length: boxDepth * 0.8, chamferRadius: 0)
+        ps.emittingDirection = SCNVector3(0, -1, 0.5)
+        ps.spreadingAngle = 30
+        ps.particleVelocity = 5
+        ps.particleVelocityVariation = 2
+        ps.acceleration = SCNVector3(0, 2, 6)
+        ps.blendMode = .alpha
+        ps.isLocal = false
+        let fade = CAKeyframeAnimation()
+        fade.values = [1.0, 0.8, 0]
+        fade.keyTimes = [0, 0.5, 1]
+        ps.propertyControllers = [.opacity: SCNParticlePropertyController(animation: fade)]
+        fizz = ps
+        fizzNode.position = SCNVector3(0, boxBottom, 0)
+        fizzNode.addParticleSystem(ps)
+        body.addChildNode(fizzNode)
+    }
+
+    /// A small soft bubble with a bright rim, for the fizz.
+    private static func bubbleImage() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 48, height: 48)).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor(white: 1, alpha: 0.35).cgColor)
+            cg.fillEllipse(in: CGRect(x: 6, y: 6, width: 36, height: 36))
+            cg.setStrokeColor(UIColor(white: 1, alpha: 0.95).cgColor)
+            cg.setLineWidth(4)
+            cg.strokeEllipse(in: CGRect(x: 6, y: 6, width: 36, height: 36))
+            cg.setFillColor(UIColor(white: 1, alpha: 1).cgColor)
+            cg.fillEllipse(in: CGRect(x: 14, y: 13, width: 9, height: 8))
+        }
     }
 }

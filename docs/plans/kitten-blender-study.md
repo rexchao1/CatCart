@@ -34,3 +34,21 @@ Rex saved the study as `art/models/kitten/cat.blend` and asked for it in the gam
 - [x] Checked: offscreen previews (front, side, run camera) and simulator screenshots of the home screen and a run through all four worlds.
 
 Not checked: frame rate on a real iPhone. The fur look is gone in the game (flat shading); a painted fur texture is the next step if it reads too smooth.
+
+## Revision 4: cuter, and real fur in the game
+
+Rex, 2026-10-08: "make the cat a lot cuter and more realistic. It looks like a marshmallow right now." In the game she was one smooth gray shape under flat light: no fur, no creases, small dark eyes. Revision 4 is a new study, `scripts/blender/make_kitten_v3.py`, saved over `art/models/kitten/cat.blend` (revision 2 stays in `art/options/kitten-realistic-v2`, and its game model in `art/options/player/kitten-v2.scn`).
+
+- [x] Face: rounder British Shorthair cheeks and whisker pads, a short muzzle, big round golden eyes a little low and wide, a painted iris (fibers, dark rim, wide pupils, the upper lid's shadow), two catchlights, a lilac-pink nose, a soft mouth, longer whiskers.
+- [x] Small round-tipped ears set wide, pink inside. Chunkier legs, round paws with four toes. A slightly fuller chest.
+- [x] Coat painted in the .blend as a color attribute (paler muzzle, chin, and chest; a touch darker on the crown, back, and tail) plus a fur length attribute.
+- [x] Export to JSON instead of USD (`export_kitten.py`), like the food and coyote: per-part geometry, the painted colors darkened where light can't reach (rays cast from every corner of the coat), and the direction the fur lies.
+- [x] Shell fur in the game (`build_kitten.swift`): the coat drawn 8 more times, each pushed out a little further and combed along the fur, each throwing away all but the middle of a fine grid of tufts. It gives her a fuzzy outline and a plush coat.
+- [x] Cuter idle on the home screen: a curious head tilt, breathing, and slow cat blinks.
+- [x] Checked in the iPhone simulator: home screen face, run camera from behind, all four worlds.
+
+Pipeline: `make_kitten_v3.py` (study, renders) → copy to `cat.blend` → `scripts/build_kitten.sh` (export plus Swift build) → `CatCart/Models/cat_kitten.scn`. `swift scripts/check_game_art.swift` checks the parts, fur, and eyes.
+
+Numbers: 24k triangles of kitten (as before) plus 8 fur shells over her coat (about 128k triangles, 40 draws, no shadows). Her head still tops out at 1.68 m sitting and about 1.25 m ducked, so the duck heights hold.
+
+Not checked: frame rate on a real iPhone with the fur. If it costs too much, the lever is fewer shells (`furShells`) or a lighter coat mesh for the shells.

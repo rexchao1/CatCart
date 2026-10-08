@@ -46,6 +46,8 @@ After steps 3 and 4, same simulator, side by side with the step 2 build, 9 stats
 
 Waves are random, so single samples swing by 150 either way; the averages are what count. Still zero hitches in house and hard farm. Home screen, city, jungle, and house look the same as before in side-by-side screenshots, including the cat tree and the shadow under the cart. Farm was only checked after, and looks normal.
 
+2026-10-08, kitten fur (`kitten-blender-study.md` revision 4) and power-ups (`power-ups.md`). Measured in the iPhone 17 simulator on a GitHub macOS runner, city with the pilot, from the stats bar, two samples each, with the old furless kitten built in the same run for comparison: 569 to 636 draw calls and 707K to 817K triangles with the fur, against 545 to 568 and 611K to 653K without. That matches the fur's 8 shells over her coat (129K triangles, about 40 draws, none in the shadow pass). That machine's frame rate swung from 22 to 60 fps in both builds, so it says nothing about speed; the phone check still decides. Power-up pickups are built up front (two of each), and the food pool grew to 60 for the rocket's sky trail.
+
 Model weights at the start: kitten 23K triangles in 8 parts, coyote 24K in 30 animated parts, food can 6K in 8 parts, road slice 11K to 28K. If the phone still struggles after steps 2 to 4, the next lever is lighter coyote and food exports (a far-away version with fewer triangles).
 
 ## Open

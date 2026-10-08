@@ -2,7 +2,8 @@ import SpriteKit
 import UIKit
 
 // The flat layer drawn on top of the 3D world: the score and food pills, the home screen,
-// the "Oh no!" panel, the crash flash, and a few light speed lines.
+// the "Oh no!" panel, the crash flash, a few light speed lines, and the power-up
+// callout and timers.
 // SceneKit draws this SpriteKit scene over every frame (SCNView.overlaySKScene).
 //
 // The big type on the home and crash screens is drawn once with UIKit into a
@@ -15,6 +16,9 @@ final class Hud: SKScene {
     /// The score and food pills are ordinary UIKit views on top of the game view,
     /// not part of this scene. See PillBar for why.
     weak var pills: PillBar?
+    /// The power-up timers, UIKit like the pills.
+    weak var powerBar: PowerBar?
+    private var callout: SKNode?
     private var panel: SKNode!
     private var home: SKNode!
     private var dim: SKSpriteNode!
@@ -87,6 +91,7 @@ final class Hud: SKScene {
         self.topSafe = max(topSafe, 54)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         pills?.layout(width: size.width, topSafe: self.topSafe)
+        powerBar?.layout(width: size.width, topSafe: self.topSafe)
         panel.position = CGPoint(x: size.width / 2, y: size.height * 0.62)
         flash.size = size
         flash.position = center
@@ -132,7 +137,42 @@ final class Hud: SKScene {
     }
 
     private func setPillsHidden(_ hidden: Bool) {
-        DispatchQueue.main.async { [weak self] in self?.pills?.setHidden(hidden) }
+        DispatchQueue.main.async { [weak self] in
+            self?.pills?.setHidden(hidden)
+            self?.powerBar?.isHidden = hidden
+        }
+    }
+
+    // MARK: - Power-ups
+
+    /// The power-ups she has, each with how much of it is left (1 to 0).
+    /// Called from the render thread only when a timer moves a notch.
+    func setPowers(_ list: [(icon: String, left: CGFloat)]) {
+        DispatchQueue.main.async { [weak self] in self?.powerBar?.show(list) }
+    }
+
+    /// The power-up's name, popped once in big type when she grabs it.
+    func showCallout(_ text: String) {
+        callout?.removeFromParent()
+        let node = SKNode()
+        node.zPosition = 32
+        node.position = CGPoint(x: size.width / 2, y: size.height * 0.72)
+        let label = boldText(text, size: 38, fill: .white, lowerFill: icy, outlineWidth: 4.5, drop: 4)
+        fit(label, maxWidth: size.width - 40)
+        node.addChild(label)
+        node.setScale(0.4)
+        node.alpha = 0
+        node.zRotation = -0.04
+        addChild(node)
+        // Pops up, hangs a moment, then floats away. Faded and hidden at the end,
+        // not removed by an SKAction (see speedLine); the next one removes it.
+        node.run(.sequence([
+            .group([.fadeIn(withDuration: 0.12), .sequence([.scale(to: 1.12, duration: 0.16), .scale(to: 1, duration: 0.1)])]),
+            .wait(forDuration: 0.85),
+            .group([.fadeOut(withDuration: 0.3), .moveBy(x: 0, y: 30, duration: 0.3)]),
+            .hide()
+        ]))
+        callout = node
     }
 
     // MARK: - Home
@@ -679,6 +719,108 @@ final class PillBar: UIView {
             alpha = 0
         } else {
             UIView.animate(withDuration: 0.3) { self.alpha = 1 }
+        }
+    }
+}
+
+/// The power-up timers: a round badge for each power-up she has, in a row
+/// under the score pill, with a gold ring that runs down as it wears off.
+/// UIKit views, for the same reason as the pills (see PillBar).
+final class PowerBar: UIView {
+    private var badges: [String: Badge] = [:]
+    private var order: [String] = []
+    private var rowWidth: CGFloat = 390
+
+    private static let size: CGFloat = 48
+    private static let navy = UIColor(red: 0.10, green: 0.17, blue: 0.38, alpha: 1)
+    private static let gold = UIColor(red: 1.0, green: 0.74, blue: 0.18, alpha: 1)
+
+    /// One timer: the power-up's picture in a cream circle, ringed in gold.
+    private final class Badge: UIView {
+        private let ring = CAShapeLayer()
+
+        init(icon: String) {
+            let d = PowerBar.size
+            super.init(frame: CGRect(x: 0, y: 0, width: d, height: d))
+            backgroundColor = UIColor(red: 1.0, green: 0.98, blue: 0.93, alpha: 0.95)
+            layer.cornerRadius = d / 2
+            layer.borderWidth = 2.5
+            layer.borderColor = PowerBar.navy.cgColor
+            let path = UIBezierPath(arcCenter: CGPoint(x: d / 2, y: d / 2), radius: d / 2 - 6,
+                                    startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true).cgPath
+            let track = CAShapeLayer()
+            track.path = path
+            track.fillColor = nil
+            track.strokeColor = UIColor(white: 0.86, alpha: 1).cgColor
+            track.lineWidth = 4
+            layer.addSublayer(track)
+            ring.path = path
+            ring.fillColor = nil
+            ring.strokeColor = PowerBar.gold.cgColor
+            ring.lineWidth = 4
+            ring.lineCap = .round
+            layer.addSublayer(ring)
+            let label = UILabel(frame: bounds)
+            label.text = icon
+            label.font = .systemFont(ofSize: 22)
+            label.textAlignment = .center
+            addSubview(label)
+        }
+
+        required init?(coder: NSCoder) { fatalError("not used") }
+
+        func set(left: CGFloat) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            ring.strokeEnd = left
+            CATransaction.commit()
+        }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Just under the pills, which sit 28 points under the safe area.
+    func layout(width: CGFloat, topSafe: CGFloat) {
+        rowWidth = width
+        frame = CGRect(x: 0, y: topSafe + 54, width: width, height: Self.size + 8)
+        arrange()
+    }
+
+    func show(_ list: [(icon: String, left: CGFloat)]) {
+        let icons = list.map { $0.icon }
+        for (icon, badge) in badges where !icons.contains(icon) {
+            badge.removeFromSuperview()
+            badges[icon] = nil
+        }
+        for item in list {
+            let badge: Badge
+            if let b = badges[item.icon] {
+                badge = b
+            } else {
+                badge = Badge(icon: item.icon)
+                addSubview(badge)
+                badges[item.icon] = badge
+                // Pops in with a little bounce.
+                badge.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+                UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.55,
+                               initialSpringVelocity: 0, options: [], animations: { badge.transform = .identity })
+            }
+            badge.set(left: item.left)
+        }
+        order = icons
+        arrange()
+    }
+
+    /// A row from the left edge of the score pill.
+    private func arrange() {
+        let start = rowWidth * 0.28 - 75 + Self.size / 2
+        for (i, icon) in order.enumerated() {
+            badges[icon]?.center = CGPoint(x: start + CGFloat(i) * (Self.size + 8), y: Self.size / 2 + 4)
         }
     }
 }

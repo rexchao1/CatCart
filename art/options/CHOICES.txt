@@ -70,9 +70,22 @@ NATURAL-PROPORTION KITTEN, REVISION 2
   Rebuild with scripts/blender/make_kitten_realistic.py in Blender.
   Render study only. Not rigged or optimized for the game's model budget.
 
+CUTE KITTEN, REVISION 4 (live since 2026-10-08)
+  kitten-cute-v3/kitten-cute-v3.blend   rounder BSH face, big golden eyes with a painted iris, pink nose,
+                                        small round ears, painted coat, collar, render-only strand fur
+  kitten-cute-v3/portrait.png front.png face.png rear.png   studio renders
+  kitten-cute-v3/iris.png                the painted iris (also packed in the .blend)
+  Rex asked for "a lot cuter and more realistic, it looks like a marshmallow".
+  Rebuild with scripts/blender/make_kitten_v3.py in Blender. In the game she has shell fur.
+
 SAVED KITTEN MODEL
-  art/models/kitten/cat.blend   copy of the natural-proportion revision 2, saved at Rex's requested path
-  Live in the game since 2026-10-03: scripts/blender/export_kitten.py converts it.
+  art/models/kitten/cat.blend   copy of kitten-cute-v3.blend (revision 4), the live source
+  scripts/build_kitten.sh turns it into CatCart/Models/cat_kitten.scn (fur, colors, iris).
+  Until 2026-10-08 this was revision 2 (kitten-realistic-v2 plus the collar).
+
+PREVIOUS GAME KITTEN (live 2026-10-03 to 2026-10-08)
+  player/kitten-v2.scn   revision 2, smooth and furless
+  To bring it back, copy it over CatCart/Models/cat_kitten.scn.
 
 OLD CARTOON KITTEN (live until 2026-10-03)
   player/kitten-cartoon.scn   big-head cartoon kitten from scripts/blender/make_cat.py
