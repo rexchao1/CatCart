@@ -7,7 +7,7 @@ blob. This revision keeps her a six-month lilac British Shorthair sitting up,
 and changes what makes a kitten read as a kitten:
 
 - a round moon face: full cheeks, puffy whisker pads, a short nose, a small chin,
-- big round golden eyes, a little low and wide on the face, with a painted iris,
+- round golden eyes, a little low and wide on the face, with a painted iris,
   wide pupils, a dark rim, and two catchlights,
 - a lilac-pink nose and inner ears (lilac cats have pink-mauve skin, not black),
 - small rounded ears set wide, chunkier legs, and round mitten paws with toes,
@@ -38,7 +38,7 @@ from mathutils import Vector, Matrix
 from mathutils.bvhtree import BVHTree
 
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-OUT = Path(next((a for a in args if not a.startswith("--")), "art/options/kitten-cute-v3")).resolve()
+OUT = Path(next((a for a in args if not a.startswith("--")), "art/options/kitten-cute-v3b")).resolve()
 QUICK = "--quick" in args
 FUR = "--nofur" not in args
 RENDER = "--norender" not in args
@@ -238,8 +238,10 @@ for v in head.data.vertices:
 # on it, and a dark rim and a furred lid cover the join. Big, round, and a bit
 # low and wide is what reads as a kitten; the slight outward turn is real.
 EYE_X, EYE_Y0, EYE_Z = .103, .30, .772
-EYE_A, EYE_B = .058, .054          # half width and half height of the opening
-DOME = .024                        # how far the cornea bulges
+# Rex, 2026-10-08: "make its eyes smaller" (they were .058 by .054 with a .024
+# dome; that take is in art/options/kitten-cute-v3).
+EYE_A, EYE_B = .048, .045          # half width and half height of the opening
+DOME = .02                         # how far the cornea bulges
 TURN, LIFT = math.radians(17), math.radians(5)
 
 
@@ -321,8 +323,9 @@ for side in (-1, 1):
 
     # Catchlights: a big soft one up and toward her left on both eyes (the
     # same window lights both), and a small one low on the other side.
-    for name, (wx, wz, rx, rz) in (("Eye shine", (-.30, .40, .0125, .0105)),
-                                   ("Eye shine small", (.36, -.30, .0055, .0048))):
+    shine = EYE_A / .058           # catchlights shrink with the eye
+    for name, (wx, wz, rx, rz) in (("Eye shine", (-.30, .40, .0125 * shine, .0105 * shine)),
+                                   ("Eye shine small", (.36, -.30, .0055 * shine, .0048 * shine))):
         lx = wx * EYE_A * side          # world-left for both eyes
         lz = wz * EYE_B
         r = min(1, math.hypot(lx / EYE_A, lz / EYE_B))
@@ -541,6 +544,8 @@ def mixc(a, b, t):
 
 
 BASE, LIGHT, DARK = hex_lin(COAT_BASE), hex_lin(COAT_LIGHT), hex_lin(COAT_DARK)
+COLLAR_CENTER = Vector((0, -.005, .62))
+COLLAR_UP = Matrix.Rotation(math.radians(-11), 3, "X") @ Vector((0, 0, 1))
 MUZZLE = Vector((0, .27, .675))
 CHEST = Vector((0, .16, .48))
 
@@ -562,7 +567,7 @@ def coat_paint(p, n):
         fur = max(fur, .9 * smoothstep(.3, -.4, n.y))   # back of the head
         fur = max(fur, .8 * smoothstep(.4, .9, n.z))      # crown
         eye = min((p - eye_centers[-1]).length, (p - eye_centers[1]).length)
-        fur = min(fur, .25 + 6 * (eye - .065))
+        fur = min(fur, .25 + 6 * (eye - EYE_A - .007))
         fur = max(fur, .25)
         # Shortest around the mouth and nose, so the mouth line still shows.
         fur = min(fur, .2 + 4 * max(0, d - .03))
@@ -575,9 +580,12 @@ def coat_paint(p, n):
         fur = 1.0 + .45 * bib
         if p.z < .12 and p.y > .1:      # paws
             fur = .55
-    # The collar sits in the fur around the neck: keep it short there.
-    if .54 < p.z < .65 and abs(p.y) < .25:
-        fur = min(fur, .35)
+    # The collar is snug in the fur around her neck: keep the fur short in the
+    # band it covers. The band tilts with the collar (front lower); CENTER and
+    # TILT match scripts/blender/add_collar.py.
+    collar = p - COLLAR_CENTER
+    if abs(collar.dot(COLLAR_UP)) < .045 and abs(p.y) < .26:
+        fur = min(fur, .3)
     # A soft shade underneath, like light that doesn't reach.
     shade = 1 - .16 * smoothstep(.2, 1, -n.z)
     # A little low-frequency variation so it isn't one flat color.

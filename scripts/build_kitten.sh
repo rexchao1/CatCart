@@ -4,8 +4,8 @@
 #
 # To change her shape, edit scripts/blender/make_kitten_v3.py and rebuild the
 # study first (it saves the .blend and renders it), then copy it over cat.blend:
-#   Blender -b --python-exit-code 1 --python scripts/blender/make_kitten_v3.py -- art/options/kitten-cute-v3
-#   cp art/options/kitten-cute-v3/kitten-cute-v3.blend art/models/kitten/cat.blend
+#   Blender -b --python-exit-code 1 --python scripts/blender/make_kitten_v3.py -- art/options/kitten-cute-v3b
+#   cp art/options/kitten-cute-v3b/kitten-cute-v3.blend art/models/kitten/cat.blend
 # Then run this, then swift scripts/preview_kitten.swift [dir] to look at her.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

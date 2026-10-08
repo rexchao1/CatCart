@@ -47,6 +47,11 @@ Rex, 2026-10-08: "make the cat a lot cuter and more realistic. It looks like a m
 - [x] Cuter idle on the home screen: a curious head tilt, breathing, and slow cat blinks.
 - [x] Checked in the iPhone simulator: home screen face, run camera from behind, all four worlds.
 
+Follow-up the same day (Rex: "make its eyes smaller and its collar tighter"):
+
+- [x] Eyes about 17% smaller across (half width .058 to .048, dome .024 to .02), catchlights scaled with them. The first take is kept in `art/options/kitten-cute-v3` and `art/options/player/kitten-v3-big-eyes.scn`.
+- [x] Collar moved 2.5 cm up her neck, to where it's narrowest under her jaw, and fitted to her: `add_collar.py` casts rays around her neck at three heights and sits the strap 2 mm outside the outermost surface, instead of a fixed oval that stood 1.5 cm off the back of her neck. The bell is pushed forward to clear her chest. The fur under the collar is short, in a band that tilts with it.
+
 Pipeline: `make_kitten_v3.py` (study, renders) → copy to `cat.blend` → `scripts/build_kitten.sh` (export plus Swift build) → `CatCart/Models/cat_kitten.scn`. `swift scripts/check_game_art.swift` checks the parts, fur, and eyes.
 
 Numbers: 24k triangles of kitten (as before) plus 8 fur shells over her coat (about 128k triangles, 40 draws, no shadows). Her head still tops out at 1.68 m sitting and about 1.25 m ducked, so the duck heights hold.
