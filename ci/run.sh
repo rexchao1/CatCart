@@ -10,20 +10,7 @@ exec > >(tee -a "$ROOT/ci-run.log") 2>&1
 BUNDLE="com.rexchao.catcart"
 step() { echo; echo "=== $* ($(date +%H:%M:%S))"; }
 
-# 1. Kitten: if a fresh Blender export is here, turn it into the game model.
-if [[ -f ci/cat_kitten.usdc ]]; then
-  step "build kitten"
-  swiftc -O -o /tmp/build_kitten scripts/build_kitten.swift && \
-    /tmp/build_kitten ci/cat_kitten.usdc CatCart/Models/cat_kitten.scn && \
-    mkdir -p "$OUT/models" && cp CatCart/Models/cat_kitten.scn "$OUT/models/" || echo "KITTEN BUILD FAILED"
-fi
-
-# 2. Offscreen previews of the kitten model (no simulator needed).
-step "preview kitten"
-swiftc -O -o /tmp/preview_kitten scripts/preview_kitten.swift && /tmp/preview_kitten "$OUT/preview" || echo "PREVIEW FAILED"
-
-# 3. Build the app for the simulator.
-step "pick simulator"
+# 0. Boot a simulator now, in the background: a fresh one takes minutes.
 UDID=$(xcrun simctl list devices available -j | python3 -c '
 import json, sys
 d = json.load(sys.stdin)["devices"]
@@ -40,7 +27,22 @@ print(best, file=sys.stderr)
 ')
 echo "UDID=$UDID"
 [[ -n "$UDID" ]] || { xcrun simctl list devices available; exit 1; }
+xcrun simctl boot "$UDID" 2>/dev/null &
 
+# 1. Kitten: if a fresh Blender export is here, turn it into the game model.
+if [[ -f ci/kitten/kitten.json ]]; then
+  step "build kitten"
+  mkdir -p "$OUT/models"
+  { swiftc -O -o /tmp/build_kitten scripts/build_kitten.swift && \
+    /tmp/build_kitten ci/kitten/kitten.json CatCart/Models/cat_kitten.scn && \
+    cp CatCart/Models/cat_kitten.scn "$OUT/models/"; } || { echo "KITTEN BUILD FAILED"; exit 1; }
+fi
+
+# 2. Offscreen previews of the kitten model (no simulator needed).
+step "preview kitten"
+swiftc -O -o /tmp/preview_kitten scripts/preview_kitten.swift && /tmp/preview_kitten "$OUT/preview" || echo "PREVIEW FAILED"
+
+# 3. Build the app for the simulator.
 step "xcodebuild"
 xcodebuild -project CatCart.xcodeproj -scheme CatCart \
   -destination "platform=iOS Simulator,id=$UDID" \
