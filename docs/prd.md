@@ -34,6 +34,8 @@ These came from Rex. Treat them as the product, not sketches.
 
 Lilac British Shorthair kitten, about 6 months, modeled on Rex's real cat. Natural proportions: round head with full cheeks, small cupped ears, golden eyes, a sturdy seated body with distinct front legs (Rex's call, 2026-10-03, replacing the oversized cartoon head). Coat is warm dove gray with only a faint dusty-lilac cast. Not purple. Not a Russian Blue. Camera is behind her for the run, so the silhouette is the back of her round head and shoulders over the box rim.
 
+She is cute and real, not a smooth toy (Rex's call, 2026-10-08: "it looks like a marshmallow"). She has soft fur with a fuzzy outline that lies the way cat fur lies, big round golden eyes with catchlights, a lilac-pink nose, round cheeks and whisker pads, a paler muzzle and chest, and small round-tipped ears. On the home screen she tilts her head at you and sometimes gives a slow cat blink.
+
 Default pose is sitting in the box. Laying-down takes exist so Rex can compare. Do not switch the in-game pose until he says which one stays.
 
 ### The cart
@@ -42,7 +44,7 @@ A real La Croix sparkling-water 12-pack: the short, flat cardboard case, icy bab
 
 The box says LaCroix in navy brush script with "SPARKLING WATER" under it, on an icy-blue wrap with waves and fizz (Rex's call, 2026-09-30: the real name, not Sparkle Wave). The lettering is set in type by `scripts/make_cart_textures.py`, never by an image generator. Four cans stand in the corners. The real brand name is fine for a family gift; it would have to change before any App Store release.
 
-In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is Rex's Blender model, `art/models/kitten/cat.blend`. `scripts/blender/export_kitten.py` turns it into the game model (drops the strand fur, cuts it to about 23k triangles, splits it into the parts the game animates), and `scripts/build_kitten.swift` writes `cat_kitten.scn` with the in-game colors. Edit the .blend, then rerun both. The old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
+In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v3.py` (revision 4, 2026-10-08; the study and its renders are in `art/options/kitten-cute-v3`). `scripts/build_kitten.sh` turns it into the game model: `scripts/blender/export_kitten.py` drops the studio and the strand fur, cuts her to about 24k triangles in the parts the game animates, darkens the creases, and writes JSON; `scripts/build_kitten.swift` adds the in-game colors, the painted iris, and the shell fur, and writes `cat_kitten.scn`. Edit the study script or the .blend, then rerun it. The previous kitten (revision 2, no fur) is `art/options/player/kitten-v2.scn`, and the old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
 
 ### Obstacles and pickups
 
@@ -87,7 +89,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. While she has a power-up, a round cream badge with its picture sits under the score pill, its gold ring running down as it wears off; grabbing one shows its name once in big type ("Fizz Rocket!"). The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
@@ -111,7 +113,7 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 ### Jump
 
-Swipe up to jump. The jump is a real arc: up to 2.6 m and back down under gravity (Rex's call 2026-10-05, was 1.9 m: "I just want the animation higher"). How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.68 s at the start and quickens to about 0.59 s at full ramp (75 s) (Rex's call, 2026-10-05: stronger gravity, faster takeoff and a faster drop; was 0.9 to 0.78 s). The higher peak kept the same airtime, so she just leaves the ground faster and falls harder; every timing stayed the same. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
+Swipe up to jump. The jump is a real arc: up to 2.6 m (4.4 m with Pounce Springs) and back down under gravity (Rex's call 2026-10-05, was 1.9 m: "I just want the animation higher"). How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.68 s at the start and quickens to about 0.59 s at full ramp (75 s) (Rex's call, 2026-10-05: stronger gravity, faster takeoff and a faster drop; was 0.9 to 0.78 s). The higher peak kept the same airtime, so she just leaves the ground faster and falls harder; every timing stayed the same. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
@@ -133,7 +135,7 @@ Until she has ducked under her first low thing, ever, a bobbing "Swipe down to d
 - Swipe to a lane with no tree: fall. If a coyote is there, crash.
 - Swipe into the side of a tree from the ground, or of a tall tree from a short roof: bump off it, stay in your lane, and stumble. A jump high enough gets you on instead.
 - Jump from a tree to hop to another tree or to clear something.
-- A tall tree's front is a crash from the ground, even in a jump. From a short roof, a jump reaches it.
+- A tall tree's front is a crash from the ground, even in a jump. From a short roof, a jump reaches it, and so does a Pounce Springs jump from the road.
 - Roll onto a ramp in its lane and ride up onto the roof with no jump. Jumping on a ramp works too. From the side, you can steer onto a ramp where it is still low (under 0.5 m); higher up the side is a bump and a stumble.
 
 Never block all three lanes with no jump, duck, or ride out. A tall tree with no ramp and no short tree right before it in its lane counts as a blocked lane. Two trees plus a food lane is fine. Three coyotes is a forced jump, and three low things a forced duck, both used rarely. Two blocked lanes with the third open is fine; that's a forced steer.
@@ -162,10 +164,22 @@ Jump over. If you are high enough, or already on a tree, they pass under. High e
 - A glancing hit is a stumble: bumping the side of a cat tree, or clipping something mid-lane-change, in the lane you're leaving or the one you haven't reached yet. A lane change counts as done once the cart crosses the line between lanes. Clipping the lane ahead bounces you back.
 - A stumble wobbles the cart, and the green spray bottle hops along right behind her for 4 s, then falls back.
 - A second stumble while the bottle is there: it catches her and sprays her. That's a crash, with the usual panel.
+- With Nine Lives, one crash or catch is saved instead (see Power-ups).
 
 ### Food
 
 Touch to collect, even in the air or on a tree. Food hanging in the air sits at 2.0 m and needs a jump (above 1.23 m) or a tree roof to reach. Food on a roof or a ramp sits on the carpet. +1 food, +25 score, a pop. Food after a coyote in the same lane, or over one, is a reward for jumping, and food on the open side of a blocked lane rewards steering.
+
+### Power-ups
+
+Like Subway Surfers' jetpack, coin magnet, super sneakers, and the board that saves you, but cat ones (Rex's call, 2026-10-08: "way more fun to play like Subway Surfers, with some cat power ups"). One shows up on the road about 9 s into a run, then one every 14 to 20 s, in place of a can of food, so it's always somewhere she can reach. It turns slowly inside a soft colored bubble. Roll into it (or jump to it, if it hangs in the air) and it works at once. They stack; grabbing one she already has restarts it.
+
+- Fizz Rocket (🚀, 5 to 9 s): the La Croix cans in her box fizz like rockets and she flies at 4.8 m, over coyotes, low things, and trees, through a winding trail of food in the sky. Swipe left and right to steer; swipe up and down do nothing up there, and road food is out of reach. The bottle gives up. She flies long enough to pass everything already on the road (5 s, longer when the road is busy), no new mixes come for the first part of the flight, and she only comes down once the road ahead is clear. For 1.2 s after landing nothing can crash her.
+- Can Magnet (🧲, 10 s): food up to 26 m ahead, in every lane and in the air, flies to her. A red horseshoe magnet bobs over her shoulder.
+- Pounce Springs (🐾, 10 s): springs under the wheels, and jumps peak at 4.4 m instead of 2.6, high enough to land on a tall tree's roof from the road. The springs squeeze flat when she ducks, so ducking still works.
+- Nine Lives (😇, until used or 20 s): a gold halo over her head. The next crash, or a catch by the spray bottle, doesn't end the run: she loses the halo, "Saved!" pops up, whatever she hit is knocked away (a tree front, she bounds up onto it), and she blinks, safe, for 1.2 s.
+
+No power-up changes the score, and there is still no multiplier or hoverboard.
 
 ### Score
 
@@ -177,7 +191,7 @@ White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with scor
 
 ### Feedback that stays
 
-Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. Dust from the wheels. The food pill pulses when you grab food. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
+Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. Dust from the wheels. A colored puff and a strong haptic when she grabs a power-up, bubbles from the box while the rocket flies. The food pill pulses when you grab food. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
 
 ---
 
@@ -207,7 +221,7 @@ Defaults in the game today:
 
 | Slot | File |
 |---|---|
-| Player | 3D kitten from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
+| Player | 3D kitten with shell fur from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | 3D turquoise salmon can (`wet_food.scn`) |
 | Cat tree | cubby tree with a flat roof, short (one story) and tall (two), carpeted ramp |
@@ -227,7 +241,8 @@ This is the live game, not a wish list.
 
 - SceneKit 3D world, portrait, iPhone 17 simulator scheme. SpriteKit HUD on top.
 - Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
-- 3D kitten in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns.
+- 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, and gives slow blinks.
+- Four power-ups on the road: Fizz Rocket (fly through a food trail), Can Magnet, Pounce Springs (high jumps), Nine Lives (one saved crash), with a callout and timer badges.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
@@ -296,6 +311,6 @@ A look or feel change is done when:
 
 Everything on the track moves by the same `dz` each frame. Keep it that way. Every 3D material goes through `applyLook` so it gets the bend and the fog; a material that skips it will float above the horizon and never fade. A mesh merged with `flattenedClone` starts with no materials and picks up its pieces' ones later, so call `applyLook` on the pieces before merging (the cat tree and low things do). Calling it on the merged node finds nothing, and the obstacle floats unbent over the far road until it is close (fixed 2026-10-04). When you change art, put extras in the options folder and say which imageset is the live default.
 
-Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `"6:tap"` is a finger down and up in place; `"5:press"` and `"7:release"` hold a finger down between them, for testing a touch that's still down when she crashes. Without god mode, two stumbles about half a second apart crash her, which is the easy way to reach the death panel. With it set, each swipe and stumble prints a `CATCART` line with the run time, lane, height, and the top she's riding; the run time reads about 0.08 s behind the swipe time, which counts from launch. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`), back to back. With `CATCART_SWIPES` set, each mix also prints where each thing in it reaches her (in meters run, and the swipe lines show meters too), and a line each time she gets on a tree or back on the road, so a line can be timed by distance. `CATCART_MIRROR=0` and `CATCART_ROT=0` fix how a mix is flipped and turned, so a scripted line knows which lane is which. `CATCART_PERF=1` also prints every tree, coyote, or can built mid-run (a pool that ran dry). The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
+Screenshot check: `scripts/e2e_visual.sh`. `CATCART_GOD=1` turns off crashes, `CATCART_PILOT=1` jumps and rides on its own, `CATCART_WORLD=jungle|house|farm` picks the start world. `CATCART_STATS=1` shows frame rate and draw counts. `CATCART_SWIPES="2:left,3.5:up"` plays swipes at those seconds through the real touch code; `"4:stumble"` trips her, to see the bottle. `"6:tap"` is a finger down and up in place; `"5:press"` and `"7:release"` hold a finger down between them, for testing a touch that's still down when she crashes. Without god mode, two stumbles about half a second apart crash her, which is the easy way to reach the death panel. With it set, each swipe and stumble prints a `CATCART` line with the run time, lane, height, and the top she's riding; the run time reads about 0.08 s behind the swipe time, which counts from launch. `CATCART_TIME=200` starts each run that many seconds into the difficulty ramp. `CATCART_WAVE=31` plays only that obstacle mix (its index in `waves`), back to back. With `CATCART_SWIPES` set, each mix also prints where each thing in it reaches her (in meters run, and the swipe lines show meters too), and a line each time she gets on a tree or back on the road, so a line can be timed by distance. `CATCART_MIRROR=0` and `CATCART_ROT=0` fix how a mix is flipped and turned, so a scripted line knows which lane is which. `CATCART_PERF=1` also prints every tree, coyote, or can built mid-run (a pool that ran dry). `CATCART_SWIPES="4:rocket"` (or `magnet`, `pounce`, `lives`) gives her that power-up, and prints `power`, `rocket landing`, and `saved by nine lives` lines. `CATCART_POWEREVERY=4` puts a power-up in a mix every 4 s; `CATCART_POWER=rocket` makes every one that kind. The pilot only jumps and ducks and never steers, so without god mode it dies on blocked lanes by design. It's still a fair check for a mix with no blocked lane: force it with `CATCART_WAVE` at `CATCART_TIME=200`, and a crash (printed to the console with the mix number) means that mix broke the same-lane gaps. Mixes with blocked lanes are checked by hand.
 
 If you add a mechanic, write the player-facing rule here in the same commit.

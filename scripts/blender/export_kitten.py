@@ -1,52 +1,58 @@
-# Turns Rex's kitten study (art/models/kitten/cat.blend) into the game kitten
-# and exports a USD file that scripts/build_kitten.swift turns into
-# CatCart/Models/cat_kitten.scn.
+# Turns the kitten study (art/models/kitten/cat.blend, built by
+# scripts/blender/make_kitten_v3.py) into the game kitten: kitten.json plus the
+# pictures it uses, which scripts/build_kitten.swift packs into
+# CatCart/Models/cat_kitten.scn. scripts/build_kitten.sh runs both:
 #
-# Run headless from the repo root:
-#   /Applications/Blender.app/Contents/MacOS/Blender -b art/models/kitten/cat.blend \
-#       --python scripts/blender/export_kitten.py -- /tmp/cat_kitten.usdc
+#   Blender -b art/models/kitten/cat.blend --python-exit-code 1 \
+#       --python scripts/blender/export_kitten.py -- /tmp/kitten
+#   swiftc -O -o /tmp/build_kitten scripts/build_kitten.swift
+#   /tmp/build_kitten /tmp/kitten/kitten.json CatCart/Models/cat_kitten.scn
 #
-# The .blend is a render study: almost a million triangles, loose objects,
-# strand fur, and a tail resting on the floor. A phone game needs about 20k
-# triangles and named parts the game can animate, so this script:
-# - deletes the studio (floor, cushion, cameras, lights) and the strand fur,
-# - turns the thin curves (whiskers, lid edges, mouth) into light meshes,
-# - decimates each part to a budget,
+# The .blend is a render study: half a million triangles, strand fur, a studio,
+# and a tail curled on the floor. A phone game wants about 25k triangles in
+# named parts it can animate, so this script:
+# - deletes the studio, the strand fur, and the resting tail (the study keeps a
+#   hidden "Game tail" held up over the box, which is used instead),
+# - turns the thin curves (whiskers, lid rims, mouth) into light meshes,
+# - cuts each part down to a triangle budget,
 # - groups everything into kitten > body > head > (earL, earR, eyeL, eyeR) and
-#   body > tail > tailTip, each with its pivot at its joint,
-# - builds a new tail held up over the back of the box (the resting tail would
-#   poke through the cardboard),
-# - renames materials to the names build_kitten.swift colors.
+#   body > tail > tailTip, each with its pivot at its joint (the study stores
+#   the joints as "pivot" properties on the objects),
+# - darkens the coat where light can't reach (under her chin, between her legs,
+#   behind the collar) by casting rays from each corner of the mesh,
+# - writes, per part and material: positions, normals, colors, texture
+#   coordinates, the painted fur length, and which way the fur lies.
 #
-# Coordinates are Blender's (Z up), face toward +Y. Units are meters.
-# Origin = center of her seat, bottom of the body at Z = 0. The .blend already
-# uses that frame, so nothing is moved or scaled.
+# Coordinates: Blender is Z up with her facing +Y. SceneKit is Y up and she
+# must face -Z, so every position and normal goes (x, y, z) -> (x, z, -y).
+# Units are meters. The coat's texture coordinates are meters too, measured
+# across the kitten: the fur shader lays its grid of tufts in them.
 
 import bpy
+import json
 import math
+import random
 import sys
-from mathutils import Vector, Matrix
+from pathlib import Path
 
-OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else "/tmp/cat_kitten.usdc"
+import numpy as np
+from mathutils import Vector, Matrix
+from mathutils.bvhtree import BVHTree
+
+OUT = Path(sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else "/tmp/kitten")
+OUT.mkdir(parents=True, exist_ok=True)
 scene = bpy.context.scene
-obj = bpy.data.objects
+objects = bpy.data.objects
 
 
 def delete(o):
     bpy.data.objects.remove(o, do_unlink=True)
 
 
-def select_only(objs):
+def select_only(o):
     bpy.ops.object.select_all(action="DESELECT")
-    for o in objs:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = objs[0]
-
-
-def apply_mods(o):
+    o.select_set(True)
     bpy.context.view_layer.objects.active = o
-    for m in list(o.modifiers):
-        bpy.ops.object.modifier_apply(modifier=m.name)
 
 
 def tris(o):
@@ -54,279 +60,251 @@ def tris(o):
     return len(o.data.loop_triangles)
 
 
-def decimate(o, budget):
-    """Collapse-decimate `o` down to about `budget` triangles."""
-    n = tris(o)
-    if n <= budget:
-        return
-    d = o.modifiers.new("decimate", "DECIMATE")
-    d.ratio = budget / n
-    apply_mods(o)
+# ---------------------------------------------------------------- clear the studio
 
-
-def join(objs, name):
-    """Join meshes into one object called `name`, mesh data `nameMesh`.
-    build_kitten.swift finds each part's geometry by that Mesh suffix."""
-    select_only(objs)
-    if len(objs) > 1:
-        bpy.ops.object.join()
-    o = bpy.context.active_object
-    o.name = name
-    o.data.name = name + "Mesh"
-    return o
-
-
-def curve_to_mesh(o, radius):
-    """Thicken a hairline curve so it survives at game size, then mesh it."""
-    c = o.data
-    c.bevel_depth = radius
-    c.bevel_resolution = 0
-    c.resolution_u = 2
-    select_only([o])
-    bpy.ops.object.convert(target="MESH")
-    return bpy.context.active_object
-
-
-def set_origin(o, point):
-    """Move the object's pivot to `point` without moving the mesh."""
-    p = Vector(point)
-    o.data.transform(Matrix.Translation(o.matrix_world.translation - p))
-    o.matrix_world = Matrix.Translation(p)
-    bpy.context.view_layer.update()
-
-
-def parent(child, par):
-    bpy.context.view_layer.update()
-    wm = child.matrix_world.copy()
-    child.parent = par
-    child.matrix_world = wm
-    bpy.context.view_layer.update()
-
-
-def bake_transform(o):
-    """Freeze location/rotation/scale into the vertices (pivot at world 0)."""
-    o.data.transform(o.matrix_world)
-    o.matrix_world = Matrix.Identity(4)
-
-
-def material(name):
-    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    return m
-
-
-def retarget(o, mapping):
-    """Swap the study's material names for the game's."""
-    for slot in o.material_slots:
-        if slot.material and slot.material.name in mapping:
-            slot.material = material(mapping[slot.material.name])
-
-
-# ---------------------------------------------------------------- clear studio
-
+STUDIO = {"Studio floor", "Low display cushion", "Directional short fur", "Rounded resting tail"}
 for o in list(scene.objects):
-    if o.type in {"CAMERA", "LIGHT"} or o.name in {
-            "Studio floor", "Low display cushion", "Directional short fur",
-            "Rounded resting tail"} or o.name.startswith("Subtle toe crease"):
+    if o.type in {"CAMERA", "LIGHT"} or o.name in STUDIO:
         delete(o)
 
-for o in scene.objects:
-    if o.type == "MESH":
-        select_only([o])
-        apply_mods(o)       # the nose bevel
-        bake_transform(o)
-
-NAMES = {
-    "Warm dove gray coat": "kittenCoat",
-    "Muted inner ear skin": "kittenEarInner",
-    "Charcoal rose nose leather": "kittenNose",
-    "Dark eyelid and lip": "kittenMouth",
-    "Fine gray ivory whiskers": "kittenWhisker",
-}
-
-# ---------------------------------------------------------------- face lines
-
-lines = []
+# ---------------------------------------------------------------- curves to meshes
+# Hairline curves vanish at game size, so they get thicker first.
+THICK = {"Brow whisker": .0016, "Whisker": .0022, "Mouth line": .0032, "Eye rim": .0046,
+         "Toe crease": .003}
 for o in list(scene.objects):
     if o.type != "CURVE":
         continue
-    if o.name.startswith("Brow whisker"):
-        r = 0.0016
-    elif o.name.startswith("Whisker"):
-        r = 0.0022
-    elif o.name.startswith("Mouth line"):
-        r = 0.003
-    else:   # fine eyelid edge
-        r = 0.0035
-    m = curve_to_mesh(o, r)
-    bake_transform(m)
-    lines.append(m)
+    c = o.data
+    c.bevel_depth = next((r for k, r in THICK.items() if o.name.startswith(k)), c.bevel_depth)
+    c.bevel_resolution = 0
+    c.resolution_u = 3
+    select_only(o)
+    bpy.ops.object.convert(target="MESH")
 
-# ---------------------------------------------------------------- eyes
-# The study paints the iris with vertex colors. SceneKit gets plain materials
-# instead: dark pupil and rim, golden iris band, plus a small white catchlight
-# so the eyes still sparkle under the game's flat lighting.
-
-def split_eye(o):
-    ca = o.data.color_attributes["Iris color"]
-    pupil = material("kittenPupil")
-    iris = material("kittenIris")
-    o.data.materials.clear()
-    o.data.materials.append(pupil)
-    o.data.materials.append(iris)
-    for p in o.data.polygons:
-        lum = sum(ca.data[v].color[0] for v in p.vertices) / len(p.vertices)
-        p.material_index = 1 if lum > 0.05 else 0
-    o.data.color_attributes.remove(ca)
-
-
-eye_parts = {}
-for side, name in ((-1, "Left eye"), (1, "Right eye")):
-    e = obj[name]
-    split_eye(e)
-    decimate(e, 900)
-    c = Vector((side * 0.098, 0.236, 0.776))     # eye center, from the study
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=10, ring_count=6, radius=1,
-                                         location=c + Vector((-0.016, 0.034, 0.012)))
-    shine = bpy.context.active_object
-    shine.scale = (0.011, 0.005, 0.011)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    shine.data.materials.append(material("kittenShine"))
-    eye = join([e, shine], "eyeL" if side < 0 else "eyeR")
-    set_origin(eye, c)
-    eye_parts[side] = eye
-
-# ---------------------------------------------------------------- ears
-
-ear_parts = {}
-for side, name in ((-1, "Left ear"), (1, "Right ear")):
-    e = obj[name]
-    retarget(e, NAMES)
-    ear = join([e], "earL" if side < 0 else "earR")
-    set_origin(ear, (side * 0.149, 0.064, 0.865))  # ear base, from the study
-    ear_parts[side] = ear
-
-# ---------------------------------------------------------------- head
-# Skull plus everything that rides on it and never moves on its own:
-# lids, nose, nostrils, mouth, whiskers, and the collar (it leans with her head).
-
-NECK = (0, 0.02, 0.64)
-
-head_mesh = obj["Head cheeks and short muzzle"]
-decimate(head_mesh, 5200)
-face = [head_mesh]
+# ---------------------------------------------------------------- budgets
+BUDGET = {"Head cheeks and short muzzle": 5200, "Torso and haunches": 4400, "Left foreleg": 1100,
+          "Right foreleg": 1100, "Left ear": 700, "Right ear": 700, "Left eye": 700, "Right eye": 700,
+          "Game tail": 1400, "Game tail tip": 1000, "Furred lid": 300, "Nostril": 40,
+          "Collar strap": 1400, "Collar stitch": 360, "Collar bell": 300}
 for o in list(scene.objects):
     if o.type != "MESH":
         continue
-    if o.name.startswith("Furred"):
-        decimate(o, 400)
-        face.append(o)
-    elif o.name.startswith("Nostril"):
-        decimate(o, 120)
-        face.append(o)
-    elif o.name == "Nose":
-        face.append(o)
-    elif o.name.startswith("Collar"):   # added by scripts/blender/add_collar.py
-        face.append(o)
-face += lines
-for o in face:
-    retarget(o, NAMES)
-head = join(face, "head")
-set_origin(head, NECK)
+    select_only(o)
+    for m in list(o.modifiers):
+        bpy.ops.object.modifier_apply(modifier=m.name)
+    # Freeze location, rotation, and scale into the vertices.
+    o.data.transform(o.matrix_world)
+    o.matrix_world = Matrix.Identity(4)
+    budget = next((b for k, b in BUDGET.items() if o.name.startswith(k)), None)
+    n = tris(o)
+    if budget and n > budget:
+        d = o.modifiers.new("decimate", "DECIMATE")
+        d.ratio = budget / n
+        bpy.ops.object.modifier_apply(modifier=d.name)
 
-# ---------------------------------------------------------------- body
-
-torso = obj["Torso and haunches"]
-decimate(torso, 4400)
-legs = [obj["Left foreleg"], obj["Right foreleg"]]
-for leg in legs:
-    decimate(leg, 1000)
-for o in [torso] + legs:
-    retarget(o, NAMES)
-body = join([torso] + legs, "body")
-body.data.transform(Matrix.Translation((0, 0, -min(v.co.z for v in body.data.vertices))))
-set_origin(body, (0, 0, 0))
-
-# ---------------------------------------------------------------- tail
-# Held up over the back of the box like the old cartoon kitten, so the game's
-# sway and lift (KittenCart.tailLift) still work. Split at the rim so the tip
-# can swing on its own. Thickness matches the study's tail.
+# ---------------------------------------------------------------- parts
+# Which part each object rides on, and where each part's joint is.
 
 
-def tube(points, r0, r1, step=0.016):
-    """Chain of spheres along a Catmull-Rom path, radius r0 -> r1."""
-    pts = [Vector(p) for p in points]
-    samples = []
-    for i in range(len(pts) - 1):
-        p0 = pts[max(i - 1, 0)]
-        p1, p2 = pts[i], pts[i + 1]
-        p3 = pts[min(i + 2, len(pts) - 1)]
-        n = max(2, int((p2 - p1).length / step))
-        for k in range(n):
-            t = k / n
-            t2, t3 = t * t, t * t * t
-            samples.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
-                                  + (-p0 + 3 * p1 - 3 * p2 + p3) * t3))
-    samples.append(pts[-1])
-    objs = []
-    for i, q in enumerate(samples):
-        r = r0 + (r1 - r0) * i / (len(samples) - 1)
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=r, location=q)
-        objs.append(bpy.context.active_object)
-    return objs
+def part_of(o):
+    name = o.name
+    x = sum((v.co.x for v in o.data.vertices), 0) / max(1, len(o.data.vertices))
+    if name.startswith(("Left eye", "Right eye", "Eye shine")):
+        return "eyeL" if x < 0 else "eyeR"
+    if name.startswith("Left ear"):
+        return "earL"
+    if name.startswith("Right ear"):
+        return "earR"
+    if name.startswith("Game tail tip"):
+        return "tailTip"
+    if name.startswith("Game tail"):
+        return "tail"
+    if name.startswith(("Torso", "Left foreleg", "Right foreleg", "Toe crease")):
+        return "body"
+    # The skull and everything on it: lids, nose, mouth, whiskers, and the
+    # collar (it leans with her head in the game).
+    return "head"
 
 
-def fuse(objs, name, budget):
-    o = join(objs, name)
-    r = o.modifiers.new("remesh", "REMESH")
-    r.mode = "VOXEL"
-    r.voxel_size = 0.008
-    s = o.modifiers.new("smooth", "SMOOTH")
-    s.factor = 0.6
-    s.iterations = 8
-    apply_mods(o)
-    decimate(o, budget)
-    bpy.ops.object.shade_smooth()
-    o.data.materials.clear()
-    o.data.materials.append(material("kittenCoat"))
-    return o
+def pivot(name, fallback):
+    o = objects.get(name)
+    return Vector(o["pivot"]) if o and "pivot" in o else Vector(fallback)
 
 
-JOINT = (0.13, -0.49, 0.5)
-tail_path = [(0.0, -0.3, 0.1), (0.05, -0.39, 0.22), (0.1, -0.46, 0.38), JOINT]
-tip_path = [JOINT, (0.15, -0.54, 0.46), (0.165, -0.575, 0.36), (0.18, -0.59, 0.29)]
-tail = fuse(tube(tail_path, 0.06, 0.057), "tail", 1400)
-set_origin(tail, tail_path[0])
-tip = fuse(tube(tip_path, 0.057, 0.05), "tailTip", 1000)
-set_origin(tip, JOINT)
+PARENT = {"kitten": None, "body": "kitten", "head": "body", "earL": "head", "earR": "head",
+          "eyeL": "head", "eyeR": "head", "tail": "body", "tailTip": "tail"}
+PIVOT = {"kitten": Vector(), "body": Vector(),
+         "head": pivot("Head cheeks and short muzzle", (0, .02, .64)),
+         "earL": pivot("Left ear", (-.16, .045, .88)), "earR": pivot("Right ear", (.16, .045, .88)),
+         "eyeL": pivot("Left eye", (-.103, .27, .772)), "eyeR": pivot("Right eye", (.103, .27, .772)),
+         "tail": pivot("Game tail", (0, -.3, .1)), "tailTip": pivot("Game tail tip", (.13, -.49, .5))}
 
-# ---------------------------------------------------------------- hierarchy
+meshes = [o for o in scene.objects if o.type == "MESH"]
+# Sit her bottom on Z = 0, like the old export, so the game's seat height holds.
+floor = min(v.co.z for o in meshes if part_of(o) == "body" for v in o.data.vertices)
+lift = Vector((0, 0, -floor))
+for o in meshes:
+    o.data.transform(Matrix.Translation(lift))
+for k in PIVOT:
+    if k != "kitten":
+        PIVOT[k] = PIVOT[k] + lift
 
-root = bpy.data.objects.new("kitten", None)
-scene.collection.objects.link(root)
-parent(body, root)
-parent(head, body)
-for part in (*eye_parts.values(), *ear_parts.values()):
-    parent(part, head)
-parent(tail, body)
-parent(tip, tail)
+# ---------------------------------------------------------------- ambient occlusion
+# For each coat vertex, cast rays over the half of the sky above its surface and
+# count how many hit the kitten within 15 cm. Crevices come out darker, which is
+# most of what makes a soft gray shape read as a body instead of a balloon.
+all_verts, all_faces = [], []
+for o in meshes:
+    base = len(all_verts)
+    all_verts += [v.co.copy() for v in o.data.vertices]
+    all_faces += [[base + i for i in p.vertices] for p in o.data.polygons]
+tree = BVHTree.FromPolygons(all_verts, all_faces)
+rng = random.Random(5)
+RAYS = 20
+dirs = []
+for i in range(RAYS):
+    # Cosine-weighted directions around +Z, rotated onto each normal below.
+    u1, u2 = (i + .5) / RAYS, rng.random()
+    r, a = math.sqrt(u1), 2 * math.pi * u2
+    dirs.append(Vector((r * math.cos(a), r * math.sin(a), math.sqrt(1 - u1))))
 
-for o in scene.objects:
-    if o.type == "MESH":
-        select_only([o])
-        bpy.ops.object.shade_smooth()
 
-leftover = [o.name for o in scene.objects if o.parent is None and o is not root]
-assert not leftover, f"unparented objects: {leftover}"
+def occlusion(p, n):
+    rot = Vector((0, 0, 1)).rotation_difference(n).to_matrix()
+    hit = 0
+    for d in dirs:
+        loc, *_ = tree.ray_cast(p + n * .003, rot @ d, .15)
+        hit += loc is not None
+    return hit / RAYS
+
+
+# ---------------------------------------------------------------- write
+
+def game(v):
+    return (v.x, v.z, -v.y)
+
+
+def cube_uv(p, n):
+    """Texture coordinates for the coat, in meters, from whichever side of a box
+    the face looks toward. The offsets keep the three sides' grids apart."""
+    ax, ay, az = abs(n.x), abs(n.y), abs(n.z)
+    if ax >= ay and ax >= az:
+        return (p.y + .37, p.z + .11)
+    if ay >= az:
+        return (p.x + .71, p.z + .53)
+    return (p.x + .19, p.y + .83)
+
+
+NOSE = Vector((0, .36, .70)) + lift
+TAIL_ROOT = Vector((0, -.2, .05)) + lift
+
+
+def comb(p, n, part):
+    """Which way the fur lies at p: back from the nose on her head, out along
+    the tail, down and a little back everywhere else. Flattened onto the
+    surface; the game leans each shell of fur along it."""
+    if part == "head":
+        g = p - NOSE
+    elif part.startswith("tail"):
+        g = p - TAIL_ROOT
+    else:
+        g = Vector((0, -.35, -1))
+    t = g - n * g.dot(n)
+    return t.normalized() if t.length > 1e-6 else Vector()
+
+
+groups = {}
+for o in meshes:
+    me = o.data
+    me.calc_loop_triangles()
+    part = part_of(o)
+    origin = PIVOT[part]
+    coat_col = me.color_attributes.get("Coat color")
+    fur_len = me.attributes.get("Fur length")
+    uv_layer = me.uv_layers.active
+    ao = {}
+    for tri in me.loop_triangles:
+        mat = me.materials[tri.material_index].name
+        is_coat = mat == "kittenCoat"
+        fn = tri.normal
+        g = groups.setdefault((part, mat), {"part": part, "material": mat, "keys": {}, "vertices": [],
+                                             "normals": [], "colors": [], "uv": [], "fur": [], "comb": [],
+                                             "indices": []})
+        for li, vi in zip(tri.loops, tri.vertices):
+            p = me.vertices[vi].co
+            n = me.corner_normals[li].vector.normalized()
+            if is_coat and coat_col:
+                if vi not in ao:
+                    ao[vi] = 1 - .62 * occlusion(p, me.vertices[vi].normal.normalized())
+                c = coat_col.data[vi].color
+                color = (c[0] * ao[vi], c[1] * ao[vi], c[2] * ao[vi], 1)
+                uv = cube_uv(p, fn)
+                fur = fur_len.data[vi].value if fur_len else 1
+                lie = comb(p, n, part)
+            else:
+                color = (1, 1, 1, 1)
+                # SceneKit's picture origin is the top left, Blender's the bottom left.
+                uv = (uv_layer.data[li].uv.x, 1 - uv_layer.data[li].uv.y) if uv_layer else (0, 0)
+                fur = 0
+                lie = Vector()
+            pos = game(p - origin)
+            nrm = game(n)
+            key = tuple(round(x, 5) for x in (*pos, *nrm, *uv)) + tuple(round(x, 3) for x in color[:3])
+            index = g["keys"].get(key)
+            if index is None:
+                index = len(g["vertices"]) // 3
+                g["keys"][key] = index
+                g["vertices"] += [round(x, 6) for x in pos]
+                g["normals"] += [round(x, 5) for x in nrm]
+                g["colors"] += [round(x, 5) for x in color]
+                g["uv"] += [round(x, 5) for x in uv]
+                g["fur"].append(round(fur, 3))
+                g["comb"] += [round(x, 4) for x in game(lie)]
+            g["indices"].append(index)
+
+# The iris picture lives in the .blend; write it beside the JSON.
+iris = bpy.data.images["iris"]
+iris.filepath_raw = str(OUT / "iris.png")
+iris.file_format = "PNG"
+iris.save()
+
+# A soft gray grain for the coat: gentle blotches a few millimeters across,
+# repeating every meter. It gives the skin under the fur some life.
+size = 256
+gr = np.random.default_rng(3)
+noise = gr.random((size, size)).astype(np.float32)
+for _ in range(3):   # blur by averaging with shifted copies (wraps, so it tiles)
+    noise = (noise + np.roll(noise, 1, 0) + np.roll(noise, -1, 0) + np.roll(noise, 1, 1) + np.roll(noise, -1, 1)) / 5
+noise = (noise - noise.min()) / (noise.max() - noise.min())
+value = .88 + .12 * noise
+grain = bpy.data.images.new("fur-grain", size, size, alpha=False)
+grain.pixels.foreach_set(np.stack([value, value, value, np.ones_like(value)], -1).ravel())
+grain.filepath_raw = str(OUT / "fur-grain.png")
+grain.file_format = "PNG"
+grain.save()
+
+parts = [{"name": k, "parent": PARENT[k],
+          "position": game(PIVOT[k] - (PIVOT[PARENT[k]] if PARENT[k] else Vector()))} for k in PARENT]
+out = {"parts": parts, "textures": {"iris": "iris.png", "grain": "fur-grain.png"},
+       "groups": [{k: v for k, v in g.items() if k != "keys"} for g in groups.values()]}
+(OUT / "kitten.json").write_text(json.dumps(out))
+
+# The game culls back faces, so a part wound inside out vanishes (an eye cap
+# facing backward shows the dark socket behind it). Her eyes must face her front.
+for g in groups.values():
+    if g["material"] == "kittenEye":
+        v, ix = g["vertices"], g["indices"]
+        forward = 0
+        for t in range(0, len(ix), 3):
+            a, b, c = (Vector(v[ix[t + k] * 3:ix[t + k] * 3 + 3]) for k in range(3))
+            forward += (b - a).cross(c - a).z < 0      # SceneKit: she faces -Z
+        assert forward > .9 * len(ix) / 3, f"{g['part']} faces backward"
 
 total = 0
-for o in scene.objects:
-    if o.type == "MESH":
-        n = tris(o)
-        total += n
-        print(f"  {o.name:8s} {n:6d} tris  pivot {tuple(round(v, 3) for v in o.matrix_world.translation)}"
-              f"  mats {[s.material.name for s in o.material_slots]}")
+for g in groups.values():
+    t = len(g["indices"]) // 3
+    total += t
+    print(f"  {g['part']:8s} {g['material']:20s} {t:6d} tris {len(g['vertices']) // 3:6d} verts")
 print("TOTAL TRIS", total)
-
-bpy.ops.wm.usd_export(filepath=OUT, selected_objects_only=False, export_materials=True,
-                      export_animation=False, export_uvmaps=False, export_normals=True)
-print("wrote", OUT)
+assert total < 32000, total
+print("wrote", OUT / "kitten.json")

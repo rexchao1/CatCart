@@ -1,67 +1,155 @@
-// Turns the Blender export of the kitten into CatCart/Models/cat_kitten.scn.
+// Turns the kitten export (scripts/blender/export_kitten.py) into
+// CatCart/Models/cat_kitten.scn. scripts/build_kitten.sh runs both steps:
 //
-//   /Applications/Blender.app/Contents/MacOS/Blender -b art/models/kitten/cat.blend \
-//       --python scripts/blender/export_kitten.py -- /tmp/cat_kitten.usdc
 //   swiftc -O -o /tmp/build_kitten scripts/build_kitten.swift
-//   /tmp/build_kitten /tmp/cat_kitten.usdc CatCart/Models/cat_kitten.scn
+//   /tmp/build_kitten /tmp/kitten/kitten.json CatCart/Models/cat_kitten.scn
 //
 // What it does:
-// - Blender writes Z-up coordinates. SceneKit is Y-up and the kitten must face
-//   -Z, so every position and normal goes (x, y, z) -> (x, z, -y).
-// - Rebuilds a clean tree: kitten > body > head > (earL, earR, eyeL, eyeR),
-//   body > tail > tailTip. Each named node carries its own geometry, and its
-//   position is its joint, so rotating or scaling it animates around the joint.
-// - Replaces the imported PBR materials with plain lambert/blinn colors, by
-//   material name, so the look does not depend on the USD importer.
-// - Paints the coat with vertex colors: lighter lilac-gray on the face front
-//   and chest, darker on the back, top of the head, and the tail.
-//   Vertex colors multiply the (white) coat diffuse. Non-coat parts get white.
+// - Rebuilds the tree the game animates: kitten > body > head > (earL, earR,
+//   eyeL, eyeR), body > tail > tailTip. Each node's position is its joint, so
+//   turning or scaling it moves the part around the joint.
+// - Gives every material its in-game look by name (plain lambert and blinn
+//   colors, so nothing depends on an importer), with the iris picture and the
+//   coat grain embedded in the file.
+// - Grows the fur. See "Shell fur" below.
 //
-// The old cartoon kitten (scripts/blender/make_cat.py) used the same material
-// names, so either Blender script feeds this one.
+// Coat colors arrive as vertex colors (painted in Blender, darkened in creases),
+// and SceneKit multiplies them into the coat's diffuse.
 
-import SceneKit
 import AppKit
+import SceneKit
 
-/// sRGB hex -> linear RGB (SceneKit reads vertex colors as linear).
-func rgb(_ h: UInt32) -> SIMD3<Float> {
-    func lin(_ c: Float) -> Float { c <= 0.04045 ? c / 12.92 : powf((c + 0.055) / 1.055, 2.4) }
-    return SIMD3(lin(Float((h >> 16) & 255) / 255), lin(Float((h >> 8) & 255) / 255), lin(Float(h & 255) / 255))
+struct Part: Decodable { let name: String; let parent: String?; let position: [Float] }
+struct Group: Decodable {
+    let part: String
+    let material: String
+    let vertices: [Float]
+    let normals: [Float]
+    let colors: [Float]
+    let uv: [Float]
+    let fur: [Float]
+    /// Which way the fur lies along the surface, one direction per vertex.
+    let comb: [Float]
+    let indices: [UInt32]
 }
+struct Export: Decodable { let parts: [Part]; let groups: [Group]; let textures: [String: String] }
+
+let args = CommandLine.arguments
+precondition(args.count == 3, "usage: build_kitten kitten.json cat_kitten.scn")
+let input = URL(fileURLWithPath: args[1])
+let export = try JSONDecoder().decode(Export.self, from: Data(contentsOf: input))
+
+func picture(_ key: String) -> NSImage {
+    let url = input.deletingLastPathComponent().appendingPathComponent(export.textures[key]!)
+    guard let image = NSImage(contentsOf: url) else { fatalError("missing picture \(url.path)") }
+    return image   // an NSImage is embedded in the SceneKit archive
+}
+let iris = picture("iris")
+let grain = picture("grain")
+
 func nscolor(_ h: UInt32) -> NSColor {
     NSColor(srgbRed: CGFloat((h >> 16) & 255) / 255, green: CGFloat((h >> 8) & 255) / 255,
             blue: CGFloat(h & 255) / 255, alpha: 1)
 }
-func smooth(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
-    let t = min(max((x - e0) / (e1 - e0), 0), 1)
-    return t * t * (3 - 2 * t)
-}
-func mix(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ t: Float) -> SIMD3<Float> { a + (b - a) * t }
 
-// Coat palette (sRGB). Base is the study's warm dove gray, brighter than the
-// render because the game's lights are flatter than Blender's studio.
-let coatBase = rgb(0xA19DA2)
-let coatLight = rgb(0xC4C0C6)   // face front and chest, faint lilac
-let coatDark = rgb(0x86828A)    // back, crown, tail
+// MARK: - Shell fur
+//
+// Real-time fur the way most games do short fur: the coat is drawn once as the
+// skin, then `furShells` more times, each copy pushed out along the surface a
+// little further, up to `furDepth` times the painted fur length (long on her
+// cheeks and chest, short on her face and paws), and combed over the way her
+// fur lies.
+//
+// Each copy throws most of its pixels away. A fine grid is laid over the coat
+// (its texture coordinates are meters across the kitten) and every cell is one
+// tuft with a random height. A copy keeps only the middle of the tufts that
+// reach it, smaller the higher it is, so tufts taper to points. Lower copies
+// are darker, because light doesn't reach the roots, and the edges facing
+// away from the camera glow a little, like light caught in fur.
+// Together they make a soft coat with a fuzzy outline, where one smooth
+// surface looked like a marshmallow.
+
+/// How many copies over the skin. More is softer and costs a draw per part each.
+let furShells = 8
+/// How far the top copy stands off the skin where the fur length is 1 (meters,
+/// before the cart's 1.25 scale).
+let furDepth: Float = 0.017
+/// How far the fur leans the way it lies (down her back, back from her nose),
+/// for each meter it stands up. Cat fur lies down; it doesn't stand like a brush.
+let furComb: Float = 0.9
+/// Tufts per meter across the coat.
+let furDensity: Float = 320
+
+func furShader(level: Float) -> String {
+    """
+    #pragma body
+    float furLevel = \(level);
+    float2 furUV = _surface.diffuseTexcoord * \(furDensity);
+    float2 furCell = floor(furUV);
+    float2 furIn = fract(furUV);
+    // Two small hashes of the cell: its tuft's height, and where in the cell it grows.
+    float3 furP = fract(float3(furCell.xyx) * 0.1031);
+    furP += dot(furP, furP.yzx + 33.33);
+    float furH = fract((furP.x + furP.y) * furP.z);
+    float3 furQ = fract(float3(furCell.xyx + 17.17) * float3(0.1031, 0.1030, 0.0973));
+    furQ += dot(furQ, furQ.yzx + 33.33);
+    float2 furAt = fract((furQ.xx + furQ.yz) * furQ.zy);
+    float furD = length(furIn - (0.3 + 0.4 * furAt));
+    // Far away a tuft is smaller than a pixel: fatten them so the coat doesn't sparkle.
+    float furFar = saturate((fwidth(furUV.x) + fwidth(furUV.y)) * 0.8 - 0.4);
+    float furR = mix(0.64 * (1.0 - 0.75 * furLevel * furLevel), 0.72, furFar);
+    if (furLevel > 0.0 && (furH < furLevel * 0.92 || furD > furR)) {
+        discard_fragment();
+    }
+    _surface.diffuse.rgb *= (0.76 + 0.36 * furLevel) * (0.94 + 0.12 * furH);
+    float furRim = 1.0 - saturate(dot(normalize(_surface.normal), normalize(_surface.view)));
+    _surface.emission.rgb += _surface.diffuse.rgb * (furRim * furRim * furRim) * (0.1 + 0.28 * furLevel);
+    """
+}
+
+func coatMaterial(level: Float, name: String) -> SCNMaterial {
+    let m = SCNMaterial()
+    m.name = name
+    m.lightingModel = .lambert
+    m.diffuse.contents = grain
+    m.diffuse.wrapS = .repeat
+    m.diffuse.wrapT = .repeat
+    m.diffuse.mipFilter = .linear
+    m.shaderModifiers = [.surface: furShader(level: level)]
+    return m
+}
+
+// MARK: - Materials
 
 func makeMaterial(_ name: String) -> SCNMaterial {
     let m = SCNMaterial()
     m.name = name
     m.lightingModel = .lambert
     switch name {
-    case "kittenCoat": m.diffuse.contents = NSColor.white   // vertex colors carry the coat
-    case "kittenMuzzle": m.diffuse.contents = nscolor(0xC6C4D2)
-    case "kittenEarInner": m.diffuse.contents = nscolor(0xC39CA4)
-    case "kittenNose": m.diffuse.contents = nscolor(0x6E5A62)
-    case "kittenMouth": m.diffuse.contents = nscolor(0x3A3236)
-    case "kittenWhisker":
-        m.diffuse.contents = nscolor(0xECE8E2)
-    case "kittenIris":
+    case "kittenCoat": return coatMaterial(level: 0, name: name)
+    case "kittenEarInner": m.diffuse.contents = nscolor(0xD49FA9)
+    case "kittenNose":
+        // A wet little nose: lilac pink with a soft shine.
         m.lightingModel = .blinn
-        m.diffuse.contents = nscolor(0xD2A846)
-        m.emission.contents = nscolor(0x3C2C08)   // keeps the gold warm in shade
-        m.specular.contents = NSColor(white: 0.5, alpha: 1)
-        m.shininess = 0.6
+        m.diffuse.contents = nscolor(0xC08A96)
+        m.specular.contents = NSColor(white: 0.45, alpha: 1)
+        m.shininess = 0.5
+    case "kittenMouth": m.diffuse.contents = nscolor(0x5E4C55)
+    case "kittenCrease": m.diffuse.contents = nscolor(0x7A727A)
+    case "kittenWhisker": m.diffuse.contents = nscolor(0xF4F1EC)
+    case "kittenEye":
+        // The painted iris, glossy like a wet eye, and lit a little from
+        // inside so the gold stays warm in shade.
+        m.lightingModel = .blinn
+        m.diffuse.contents = iris
+        m.diffuse.mipFilter = .linear
+        m.emission.contents = iris
+        m.emission.intensity = 0.32
+        m.specular.contents = NSColor(white: 0.85, alpha: 1)
+        m.shininess = 0.9
+    case "kittenShine":
+        m.lightingModel = .constant
+        m.diffuse.contents = NSColor.white
     case "kittenCollar": m.diffuse.contents = nscolor(0xFF7A12)
     case "kittenCollarStitch": m.diffuse.contents = nscolor(0xFFE6B8)
     case "kittenBell":
@@ -71,192 +159,134 @@ func makeMaterial(_ name: String) -> SCNMaterial {
         m.specular.contents = NSColor(white: 0.7, alpha: 1)
         m.shininess = 0.6
     case "kittenBellSlit": m.diffuse.contents = nscolor(0x3A2A10)
-    case "kittenPupil":
-        m.lightingModel = .blinn
-        m.diffuse.contents = nscolor(0x1A161E)
-        m.specular.contents = NSColor(white: 0.6, alpha: 1)
-        m.shininess = 0.7
-    case "kittenShine":
-        m.lightingModel = .constant
-        m.diffuse.contents = NSColor.white
-    default: m.diffuse.contents = NSColor.magenta
+    default:
+        print("WARNING: no look for material \(name)")
+        m.diffuse.contents = NSColor.magenta
     }
     return m
 }
 
-func readVec3(_ s: SCNGeometrySource) -> [SIMD3<Float>] {
-    precondition(s.usesFloatComponents && s.bytesPerComponent == 4)
-    var out = [SIMD3<Float>]()
-    out.reserveCapacity(s.vectorCount)
-    s.data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-        for i in 0..<s.vectorCount {
-            let o = s.dataOffset + i * s.dataStride
-            out.append(SIMD3(raw.load(fromByteOffset: o, as: Float.self),
-                             raw.load(fromByteOffset: o + 4, as: Float.self),
-                             raw.load(fromByteOffset: o + 8, as: Float.self)))
-        }
-    }
-    return out
+// MARK: - Geometry
+
+func source(_ values: [Float], _ semantic: SCNGeometrySource.Semantic, _ components: Int) -> SCNGeometrySource {
+    let data = values.withUnsafeBufferPointer { Data(buffer: $0) }
+    return SCNGeometrySource(data: data, semantic: semantic, vectorCount: values.count / components,
+                             usesFloatComponents: true, componentsPerVector: components,
+                             bytesPerComponent: 4, dataOffset: 0, dataStride: components * 4)
 }
 
-func indices(_ e: SCNGeometryElement) -> [Int] {
-    var out = [Int]()
-    e.data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-        let n = e.data.count / e.bytesPerIndex
-        for i in 0..<n {
-            switch e.bytesPerIndex {
-            case 1: out.append(Int(raw.load(fromByteOffset: i, as: UInt8.self)))
-            case 2: out.append(Int(raw.load(fromByteOffset: i * 2, as: UInt16.self)))
-            default: out.append(Int(raw.load(fromByteOffset: i * 4, as: UInt32.self)))
+func element(_ indices: [UInt32]) -> SCNGeometryElement {
+    let data = indices.withUnsafeBufferPointer { Data(buffer: $0) }
+    return SCNGeometryElement(data: data, primitiveType: .triangles, primitiveCount: indices.count / 3,
+                              bytesPerIndex: 4)
+}
+
+/// One geometry from several groups: their vertices end to end, one element
+/// (and material) per group.
+func geometry(_ groups: [Group], materials: [SCNMaterial]) -> SCNGeometry {
+    var v = [Float](), n = [Float](), c = [Float](), t = [Float]()
+    var elements = [SCNGeometryElement]()
+    for g in groups {
+        let base = UInt32(v.count / 3)
+        v += g.vertices; n += g.normals; c += g.colors; t += g.uv
+        elements.append(element(g.indices.map { $0 + base }))
+    }
+    let geo = SCNGeometry(sources: [source(v, .vertex, 3), source(n, .normal, 3), source(c, .color, 4),
+                                    source(t, .texcoord, 2)], elements: elements)
+    geo.materials = materials
+    return geo
+}
+
+/// One material per shell, shared by every part's fur.
+let furMaterials = (1...furShells).map { shell in
+    coatMaterial(level: Float(shell) / Float(furShells), name: "kittenFur\(shell)")
+}
+
+/// The fur over one part's coat: `furShells` copies of it, each pushed out along
+/// its normals by its share of the fur depth, each with its own level.
+func furGeometry(_ coat: Group) -> SCNGeometry {
+    var v = [Float](), n = [Float](), c = [Float](), t = [Float]()
+    var elements = [SCNGeometryElement]()
+    let count = coat.vertices.count / 3
+    for shell in 1...furShells {
+        let level = Float(shell) / Float(furShells)
+        let base = UInt32(v.count / 3)
+        for i in 0..<count {
+            // Out from the skin, and leaning along the fur more the further out it is.
+            let push = furDepth * coat.fur[i] * level
+            let lean = push * furComb * level
+            for k in 0..<3 {
+                v.append(coat.vertices[i * 3 + k] + coat.normals[i * 3 + k] * push + coat.comb[i * 3 + k] * lean)
             }
         }
+        n += coat.normals; c += coat.colors; t += coat.uv
+        elements.append(element(coat.indices.map { $0 + base }))
     }
-    return out
+    let geo = SCNGeometry(sources: [source(v, .vertex, 3), source(n, .normal, 3), source(c, .color, 4),
+                                    source(t, .texcoord, 2)], elements: elements)
+    geo.materials = furMaterials
+    return geo
 }
 
-/// Triangle corners of an element, each as one index per channel.
-/// The USD importer keeps polygons with two index channels, interleaved per
-/// corner as (position, normal), because Blender writes face-varying normals.
-func triangleCorners(_ e: SCNGeometryElement) -> [[Int]] {
-    let all = indices(e)
-    let ch = max(1, e.indicesChannelCount)
-    func corner(_ k: Int, base: Int) -> [Int] { (0..<ch).map { all[base + k * ch + $0] } }
-    switch e.primitiveType {
-    case .triangles:
-        return (0..<(all.count / ch)).map { corner($0, base: 0) }
-    case .polygon:
-        let counts = all[0..<e.primitiveCount]
-        var at = 0
-        var out = [[Int]]()
-        let base = e.primitiveCount
-        for c in counts {
-            for k in 1..<(c - 1) {
-                out += [corner(at, base: base), corner(at + k, base: base), corner(at + k + 1, base: base)]
-            }
-            at += c
-        }
-        return out
-    default: fatalError("unsupported primitive type \(e.primitiveType)")
-    }
-}
+// MARK: - Build
 
-/// Blender Z-up -> SceneKit Y-up, facing -Z.
-func conv(_ v: SIMD3<Float>) -> SIMD3<Float> { SIMD3(v.x, v.z, -v.y) }
-func conv(_ v: SCNVector3) -> SCNVector3 { SCNVector3(v.x, v.z, -v.y) }
-
-/// Coat shade for a point (SceneKit space, kitten root) with normal n.
-func coatColor(part: String, p: SIMD3<Float>, n: SIMD3<Float>) -> SIMD3<Float> {
-    var c = coatBase
-    switch part {
-    case "head", "earL", "earR":
-        // front of the face lighter, crown and back of head darker
-        let front = smooth(0.1, 0.8, -n.z)
-        c = mix(c, coatDark, smooth(0.6, 1.0, n.y) * 0.35 + smooth(0.3, 1.0, n.z) * 0.25)
-        c = mix(c, coatLight, front * 0.85)
-    case "body":
-        let front = smooth(0.0, 0.7, -n.z) * smooth(0.02, 0.2, p.y)
-        let back = smooth(0.0, 0.8, n.z) * 0.6 + smooth(0.5, 1.0, n.y) * 0.3
-        c = mix(c, coatDark, min(back, 1))
-        c = mix(c, coatLight, front * 0.8)
-    case "tail", "tailTip":
-        c = mix(coatDark, coatBase, smooth(0.3, 1.0, n.y) * 0.4)
-    default: break
-    }
-    // soft shade underneath, a cheap contact darkening
-    c *= 1 - 0.18 * smooth(0.2, 1.0, -n.y)
-    return c
-}
-
-let args = CommandLine.arguments
-let src = URL(fileURLWithPath: args[1])
-let dst = URL(fileURLWithPath: args[2])
-let imported = try SCNScene(url: src, options: nil)
-guard let kittenIn = imported.rootNode.childNode(withName: "kitten", recursively: true) else {
-    fatalError("no kitten node in \(src.path)")
-}
-
-var tris = 0
-
-/// Rebuild one named node. `origin` is its world position (SceneKit space).
-func rebuild(_ n: SCNNode, parentWorld: SIMD3<Float>) -> SCNNode {
-    let out = SCNNode()
-    out.name = n.name
-    let world = conv(SIMD3<Float>(Float(n.worldPosition.x), Float(n.worldPosition.y), Float(n.worldPosition.z)))
-    let local = world - parentWorld
-    out.position = SCNVector3(local.x, local.y, local.z)
-    for c in n.childNodes {
-        if let g = c.geometry, c.name?.hasSuffix("Mesh") == true {
-            // Mesh child: bake its vertices into this node's space (child is at 0).
-            let rawV = readVec3(g.sources(for: .vertex)[0]).map(conv)
-            let rawN = readVec3(g.sources(for: .normal)[0]).map { simd_normalize(conv($0)) }
-            let mats = g.materials.map { $0.name ?? "" }
-            // Weld (position, normal) pairs into single-index vertices.
-            var vs = [SIMD3<Float>](), ns = [SIMD3<Float>](), colors = [SIMD3<Float>]()
-            var seen = [[Int]: UInt32]()
-            var elements = [SCNGeometryElement]()
-            for (ei, e) in g.elements.enumerated() {
-                let coat = mats[ei] == "kittenCoat"
-                var idx = [UInt32]()
-                for c in triangleCorners(e) {
-                    let key = [c[0], c.count > 1 ? c[1] : c[0], coat ? 1 : 0]
-                    if let i = seen[key] { idx.append(i); continue }
-                    let p = rawV[c[0]], nn = rawN[c.count > 1 ? c[1] : c[0]]
-                    let i = UInt32(vs.count)
-                    vs.append(p); ns.append(nn)
-                    colors.append(coat ? coatColor(part: n.name ?? "", p: p + world, n: nn) : SIMD3(1, 1, 1))
-                    seen[key] = i
-                    idx.append(i)
-                }
-                let el = SCNGeometryElement(indices: idx, primitiveType: .triangles)
-                tris += el.primitiveCount
-                elements.append(el)
-            }
-            let vsrc = SCNGeometrySource(vertices: vs.map { SCNVector3($0.x, $0.y, $0.z) })
-            let nsrc = SCNGeometrySource(normals: ns.map { SCNVector3($0.x, $0.y, $0.z) })
-            let cdata = colors.withUnsafeBufferPointer { buf -> Data in
-                var d = Data()
-                for c in buf { for f in [c.x, c.y, c.z, 1] { withUnsafeBytes(of: f) { d.append(contentsOf: $0) } } }
-                return d
-            }
-            let csrc = SCNGeometrySource(data: cdata, semantic: .color, vectorCount: colors.count,
-                                         usesFloatComponents: true, componentsPerVector: 4,
-                                         bytesPerComponent: 4, dataOffset: 0, dataStride: 16)
-            let geo = SCNGeometry(sources: [vsrc, nsrc, csrc], elements: elements)
-            geo.name = n.name
-            geo.materials = mats.map(makeMaterial)
-            out.geometry = geo
-        } else if c.name != nil {
-            out.addChildNode(rebuild(c, parentWorld: world))
-        }
-    }
-    return out
-}
-
-let kitten = rebuild(kittenIn, parentWorld: SIMD3(0, 0, 0))
+var nodes = [String: SCNNode]()
 let scene = SCNScene()
-scene.rootNode.addChildNode(kitten)
+for p in export.parts {
+    let node = SCNNode()
+    node.name = p.name
+    node.position = SCNVector3(p.position[0], p.position[1], p.position[2])
+    nodes[p.name] = node
+    if let parent = p.parent { nodes[parent]!.addChildNode(node) } else { scene.rootNode.addChildNode(node) }
+}
 
-let (mn, mx) = kitten.boundingBox
-func bbox(_ n: SCNNode) -> (SCNVector3, SCNVector3) {
-    var lo = SCNVector3(1e9, 1e9, 1e9), hi = SCNVector3(-1e9, -1e9, -1e9)
-    n.enumerateHierarchy { c, _ in
-        guard let g = c.geometry else { return }
-        let (a, b) = g.boundingBox
-        for corner in [a, b] {
-            let w = c.convertPosition(corner, to: nil)
-            lo = SCNVector3(min(lo.x, w.x), min(lo.y, w.y), min(lo.z, w.z))
-            hi = SCNVector3(max(hi.x, w.x), max(hi.y, w.y), max(hi.z, w.z))
-        }
+var triangles = 0, furTriangles = 0
+var materialCache = [String: SCNMaterial]()
+for (part, groups) in Dictionary(grouping: export.groups, by: \.part) {
+    let node = nodes[part]!
+    let mats = groups.map { g -> SCNMaterial in
+        if let m = materialCache[g.material] { return m }
+        let m = makeMaterial(g.material)
+        materialCache[g.material] = m
+        return m
     }
-    return (lo, hi)
+    node.geometry = geometry(groups, materials: mats)
+    node.geometry?.name = part
+    triangles += groups.reduce(0) { $0 + $1.indices.count / 3 }
+    if let coat = groups.first(where: { $0.material == "kittenCoat" }) {
+        let fur = SCNNode(geometry: furGeometry(coat))
+        fur.name = "fur"
+        fur.castsShadow = false
+        node.addChildNode(fur)
+        furTriangles += coat.indices.count / 3 * furShells
+    }
 }
-_ = (mn, mx)
-let (lo, hi) = bbox(kitten)
+
+let kitten = nodes["kitten"]!
+var lo = SCNVector3(1e9, 1e9, 1e9), hi = SCNVector3(-1e9, -1e9, -1e9)
+kitten.enumerateHierarchy { n, _ in
+    guard let g = n.geometry, n.name != "fur" else { return }
+    let (a, b) = g.boundingBox
+    for corner in [a, b] {
+        let w = n.convertPosition(corner, to: nil)
+        lo = SCNVector3(min(lo.x, w.x), min(lo.y, w.y), min(lo.z, w.z))
+        hi = SCNVector3(max(hi.x, w.x), max(hi.y, w.y), max(hi.z, w.z))
+    }
+}
 print("bounds min \(lo) max \(hi)")
-kitten.enumerateHierarchy { c, _ in
-    if let name = c.name { print("  \(name) at \(c.worldPosition)") }
+kitten.enumerateHierarchy { n, _ in
+    if let name = n.name, name != "fur" { print("  \(name) at \(n.worldPosition)") }
 }
-print("triangles \(tris)")
-try? FileManager.default.removeItem(at: dst)
-let ok = scene.write(to: dst, options: nil, delegate: nil, progressHandler: nil)
-print(ok ? "wrote \(dst.path)" : "WRITE FAILED")
+print("triangles \(triangles), fur shells \(furTriangles)")
+
+let output = URL(fileURLWithPath: args[2])
+try? FileManager.default.removeItem(at: output)
+precondition(scene.write(to: output, options: nil, delegate: nil, progressHandler: nil), "write failed")
+let restored = try SCNScene(url: output, options: nil)
+precondition(restored.rootNode.childNode(withName: "kitten", recursively: false) != nil, "no kitten in \(output.path)")
+var restoredFur = 0
+restored.rootNode.enumerateHierarchy { n, _ in
+    for m in n.geometry?.materials ?? [] where m.shaderModifiers?[.surface] != nil { restoredFur += 1 }
+}
+precondition(restoredFur > furShells, "the fur shaders didn't survive the save")
+print("wrote \(output.path)")
