@@ -1,0 +1,144 @@
+# Builds Cat Cart on a Mac, plays it in the iPhone simulator, and commits
+# screenshots to ci-shots/ on the same branch, so changes made on a machine
+# without Xcode can be compiled and looked at.
+#
+# Put [art] in a commit message (or run it by hand with art = true) to also
+# re-export the kitten, coyote, and food from their Blender sources first,
+# with the bpy Python module instead of Blender.app, and commit the new .scn files.
+name: Mac build and screenshots
+
+on:
+  push:
+    branches: ['claude/**']
+    paths-ignore: ['ci-shots/**', 'docs/**', '**.md']
+  workflow_dispatch:
+    inputs:
+      art:
+        description: Re-export the Blender models first
+        type: boolean
+        default: false
+
+concurrency:
+  group: mac-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      ART: ${{ inputs.art || contains(github.event.head_commit.message, '[art]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Pick the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - uses: actions/setup-python@v5
+        if: env.ART == 'true'
+        with:
+          python-version: '3.13'
+
+      - name: Re-export the Blender models
+        if: env.ART == 'true'
+        run: |
+          set -euo pipefail
+          pip install bpy
+          WORK=$(mktemp -d)
+          RUN="python scripts/blender/run_bpy.py"
+          $RUN art/models/kitten/cat.blend scripts/blender/export_kitten.py -- "$WORK"
+          swiftc -O scripts/build_kitten.swift -o "$WORK/build_kitten"
+          "$WORK/build_kitten" "$WORK/kitten.json" CatCart/Models/cat_kitten.scn
+          swiftc -O scripts/build_game_pickup.swift -o "$WORK/build_game_pickup"
+          $RUN art/models/coyote/coyote.blend scripts/blender/export_game_pickup.py -- coyote "$WORK/coyote.json"
+          "$WORK/build_game_pickup" "$WORK/coyote.json" CatCart/Models/coyote_run.scn
+          $RUN art/models/food/wet-food.blend scripts/blender/export_game_pickup.py -- food "$WORK/food.json"
+          "$WORK/build_game_pickup" "$WORK/food.json" CatCart/Models/wet_food.scn
+          ls -la CatCart/Models
+
+      - name: Art checks and model previews
+        continue-on-error: true
+        run: |
+          mkdir -p shots/art
+          swift scripts/check_game_art.swift shots/art || echo "check_game_art failed"
+          swiftc -O -o /tmp/preview_kitten scripts/preview_kitten.swift && /tmp/preview_kitten shots/art || echo "preview_kitten failed"
+
+      - name: Build the app
+        run: |
+          set -o pipefail
+          xcodebuild -project CatCart.xcodeproj -scheme CatCart \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -E 'error:|warning: unre|BUILD' || true
+          grep -q 'BUILD SUCCEEDED' build.log || { grep -B2 -A6 'error:' build.log | head -200; exit 1; }
+
+      - name: Play it in the simulator and take screenshots
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[x for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")]
+          pref=[x for x in c if x["name"]=="iPhone 17 Pro"] or [x for x in c if "Pro" in x["name"]] or c
+          print(pref[-1]["udid"])')
+          echo "Simulator $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=DerivedData/Build/Products/Debug-iphonesimulator/CatCart.app
+          xcrun simctl install "$UDID" "$APP"
+          B=com.rexchao.catcart
+          OUT=shots/game; mkdir -p "$OUT"
+          shot() { xcrun simctl io "$UDID" screenshot "$OUT/$1.png" >/dev/null 2>&1 || true; }
+          go() { # go <name> <seconds to wait for each shot...> -- env pairs
+            local name=$1; shift
+            local waits=(); while [[ $# -gt 0 && "$1" != "--" ]]; do waits+=("$1"); shift; done; shift || true
+            xcrun simctl terminate "$UDID" $B >/dev/null 2>&1 || true
+            sleep 0.5
+            env "$@" xcrun simctl launch "$UDID" $B >/dev/null
+            local i=0
+            for w in "${waits[@]}"; do sleep "$w"; i=$((i+1)); shot "${name}_$i"; done
+          }
+          RUNENV=(SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 SIMCTL_CHILD_CATCART_PILOT=1)
+          # Warm-up launch: the first launch compiles shaders and is slow.
+          go warmup 8 -- "${RUNENV[@]}"
+          go home 4 2 -- SIMCTL_CHILD_CATCART_X=1
+          go city 1.5 1 1 2 3 -- "${RUNENV[@]}"
+          for w in jungle house farm; do go "$w" 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_WORLD=$w; done
+          # Frozen moments: a jump on the way up, at the top, a lane change, a duck.
+          go jumpup 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.12:freeze"
+          go jumptop 4.4 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.33:freeze"
+          go landing 4.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.72:freeze"
+          go lane 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:left,3.1:freeze"
+          go duck 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:down,3.15:freeze"
+          go bottle 5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:stumble,4:freeze"
+          go rocket 5.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="2:rocket,5:freeze"
+          go hard 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_TIME=40
+          go crash 6 -- SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_SWIPES="3:stumble,3.4:stumble"
+          ls "$OUT"
+
+      - name: Commit screenshots (and re-exported models)
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf ci-shots; mkdir -p ci-shots
+          for f in $(find shots -name '*.png'); do
+            n=$(echo "${f#shots/}" | tr '/' '-'); n="${n%.png}.jpg"
+            sips -Z 900 -s format jpeg -s formatOptions 72 "$f" --out "ci-shots/$n" >/dev/null || true
+          done
+          [ -f build.log ] && { grep -E 'error:' build.log | head -100 > ci-shots/build-errors.txt || true; }
+          git config user.name "Cat Cart CI"
+          git config user.email "ci@users.noreply.github.com"
+          git add -A ci-shots
+          [ "$ART" = "true" ] && git add CatCart/Models/*.scn || true
+          git diff --cached --quiet && exit 0
+          git commit -m "CI screenshots for ${GITHUB_SHA::7} [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 3; done
