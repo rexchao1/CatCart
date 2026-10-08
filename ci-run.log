@@ -1,0 +1,48 @@
+(((26, 5), True), '88931AEA-62E6-447F-8697-DCE00A671384', 'iPhone 17', 'com.apple.CoreSimulator.SimRuntime.iOS-26-5')
+UDID=88931AEA-62E6-447F-8697-DCE00A671384
+
+=== preview kitten (19:24:02)
+/Users/runner/work/CatCart/CatCart/out/preview/kitten_game.png
+/Users/runner/work/CatCart/CatCart/out/preview/kitten_front.png
+/Users/runner/work/CatCart/CatCart/out/preview/kitten_face.png
+/Users/runner/work/CatCart/CatCart/out/preview/kitten_side.png
+
+=== xcodebuild (19:28:06)
+BUILD OK
+
+=== boot (19:31:35)
+Monitoring boot status for iPhone 17 (88931AEA-62E6-447F-8697-DCE00A671384).
+Device already booted, nothing to do.
+
+
+=== shots (19:32:33)
+
+=== done (19:35:19)
+/Users/runner/work/CatCart/CatCart/out/logs:
+total 8
+drwxr-xr-x  7 runner  staff  224 Oct  8 19:34 .
+drwxr-xr-x  5 runner  staff  160 Oct  8 19:23 ..
+-rw-r--r--  1 runner  staff  287 Oct  8 19:28 build.log
+-rw-r--r--  1 runner  staff    0 Oct  8 19:34 home.err
+-rw-r--r--  1 runner  staff    0 Oct  8 19:34 home.log
+-rw-r--r--  1 runner  staff    0 Oct  8 19:33 warmup.err
+-rw-r--r--  1 runner  staff    0 Oct  8 19:33 warmup.log
+
+/Users/runner/work/CatCart/CatCart/out/preview:
+total 1136
+drwxr-xr-x  6 runner  staff     192 Oct  8 19:35 .
+drwxr-xr-x  5 runner  staff     160 Oct  8 19:23 ..
+-rw-r--r--  1 runner  staff  263980 Oct  8 19:35 kitten_face.jpg
+-rw-r--r--  1 runner  staff  146967 Oct  8 19:35 kitten_front.jpg
+-rw-r--r--  1 runner  staff   72866 Oct  8 19:35 kitten_game.jpg
+-rw-r--r--  1 runner  staff   93656 Oct  8 19:35 kitten_side.jpg
+
+/Users/runner/work/CatCart/CatCart/out/shots:
+total 19968
+drwxr-xr-x  7 runner  staff      224 Oct  8 19:35 .
+drwxr-xr-x  5 runner  staff      160 Oct  8 19:23 ..
+-rw-r--r--@ 1 runner  staff  2258547 Oct  8 19:35 home_b_hero.png
+-rw-r--r--@ 1 runner  staff  1955148 Oct  8 19:35 home_c_hero.png
+-rw-r--r--@ 1 runner  staff  1908158 Oct  8 19:35 home_d_hero.png
+-rw-r--r--@ 1 runner  staff  2155634 Oct  8 19:34 home_hero.png
+-rw-r--r--@ 1 runner  staff  1935522 Oct  8 19:34 warmup_hero.png
