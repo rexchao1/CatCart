@@ -13,8 +13,14 @@
 #   Collar buckle (kittenBell, the gold)
 #   Collar bell, Collar bell loop (kittenBell), Collar bell slit (kittenBellSlit)
 #
-# Coordinates are Blender's (Z up, she faces +Y). At z = 0.60 her neck is about
-# 0.32 m wide (x) and 0.40 m deep (y), centered near y = 0.
+# Coordinates are Blender's (Z up, she faces +Y).
+#
+# The collar is snug (Rex, 2026-10-08: "make its collar tighter"). It sits up
+# where her neck is narrowest, just under her jaw, and instead of a fixed oval
+# the strap follows her actual neck: every few degrees around it, a ray finds
+# her surface (body, and the jaw at the front) a little above, at, and below the
+# strap's line, and the strap's inner face sits GAP outside the outermost one.
+# Without her body in the file it falls back to the old oval.
 
 import bpy
 import bmesh
@@ -22,16 +28,20 @@ import math
 import os
 import sys
 from mathutils import Vector, Matrix
+from mathutils.bvhtree import BVHTree
 
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = next((a for a in args if not a.startswith("--")), "/tmp/collar-preview")
 SAVE = "--nosave" not in args
 RENDER = "--norender" not in args
 
-CENTER = Vector((0.0, -0.005, 0.595))
-RX, RY = 0.172, 0.208           # strap centerline, just outside the fur
+CENTER = Vector((0.0, -0.005, 0.62))
+RX, RY = 0.165, 0.2             # the old fixed oval, if there's no body to fit
 TILT = math.radians(-11)        # front sits lower, under the chin
 WIDTH, THICK = 0.05, 0.013      # strap height and thickness
+GAP = 0.002                     # room between her neck and the strap's inside
+ROT = Matrix.Rotation(TILT, 3, "X")
+UP = ROT @ Vector((0, 0, 1))
 
 scene = bpy.context.scene
 for o in list(bpy.data.objects):
@@ -75,14 +85,61 @@ def new_obj(name, bm, material):
     return o
 
 
+def neck_surfaces():
+    """Ray trees for her body and head, or [] if this file has no kitten."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    found = [bpy.data.objects.get(n) for n in ("Torso and haunches", "Head cheeks and short muzzle")]
+    return [(BVHTree.FromObject(o, dg), o.matrix_world) for o in found if o is not None]
+
+
+def fit_radii(steps=96):
+    """The strap centerline's distance from CENTER at each of `steps` angles
+    around her neck, snug to it, smoothed so the strap runs clean."""
+    trees = neck_surfaces()
+    if not trees:
+        return None
+    radii = []
+    for i in range(steps):
+        t = 2 * math.pi * i / steps
+        d = ROT @ Vector((math.sin(t), math.cos(t), 0))
+        outer = 0.0
+        for lift in (-WIDTH * 0.45, 0.0, WIDTH * 0.45):
+            c = CENTER + UP * lift
+            for tree, mw in trees:
+                inv = mw.inverted()
+                hit = tree.ray_cast(inv @ (c + d * 0.6), (inv.to_3x3() @ -d).normalized(), 0.6)
+                if hit[0] is not None:
+                    outer = max(outer, ((mw @ hit[0]) - c).dot(d))
+        radii.append(outer + GAP + THICK / 2)
+    # Smooth over a few neighbors, but never inward of what was measured.
+    return [max(radii[i], sum(radii[(i + k) % steps] for k in range(-3, 4)) / 7) for i in range(steps)]
+
+
+RADII = fit_radii()
+
+
+def centerline(t, lift=0.0):
+    if RADII is None:
+        x, y = RX * math.sin(t), RY * math.cos(t)
+    else:
+        f = (t / (2 * math.pi)) % 1 * len(RADII)
+        i = int(f)
+        r = RADII[i % len(RADII)] * (1 - (f - i)) + RADII[(i + 1) % len(RADII)] * (f - i)
+        x, y = r * math.sin(t), r * math.cos(t)
+    return Vector((x, y, lift))
+
+
 def ring_point(t, lift=0.0):
     """Point on the strap centerline at angle t (0 = front), tilted, plus the
     outward normal in the same frame."""
-    x, y = RX * math.sin(t), RY * math.cos(t)
-    n = Vector((math.sin(t) / RX, math.cos(t) / RY, 0)).normalized()
-    p = Vector((x, y, lift))
-    rot = Matrix.Rotation(TILT, 3, "X")
-    return CENTER + rot @ p, rot @ n, rot @ Vector((0, 0, 1))
+    p = centerline(t, lift)
+    # Outward normal: square to the strap's direction, in the collar's plane.
+    e = 0.002
+    along = centerline(t + e) - centerline(t - e)
+    n = Vector((along.y, -along.x, 0)).normalized()
+    if n.dot(Vector((p.x, p.y, 0))) < 0:
+        n = -n
+    return CENTER + ROT @ p, ROT @ n, UP
 
 
 def profile(w, th, r=0.0045, steps=3):
@@ -145,8 +202,17 @@ R = 0.032
 bm = bmesh.new()
 bmesh.ops.create_uvsphere(bm, u_segments=20, v_segments=14, radius=R)
 bell = new_obj("Collar bell", bm, GOLD)
-bell.location = c + nrm * (THICK / 2 + 0.012) + Vector((0, 0, 0)) + up * -(WIDTH / 2 + R * 0.55)
+bell.location = c + nrm * (THICK / 2 + 0.012) + up * -(WIDTH / 2 + R * 0.55)
 bell.name = "Collar bell"
+# Hanging below a snug strap, the bell would sit in her chest fur: bring it
+# forward until its back clears her (plus a little for the fur).
+for tree, mw in neck_surfaces():
+    inv = mw.inverted()
+    hit = tree.ray_cast(inv @ (bell.location + nrm * 0.5), (inv.to_3x3() @ -nrm).normalized(), 0.6)
+    if hit[0] is not None:
+        clear = ((mw @ hit[0]) - bell.location).dot(nrm) + R + 0.006
+        if clear > 0:
+            bell.location += nrm * clear
 
 # Slit: a dark thin band across the lower half of the bell, facing forward.
 bm = bmesh.new()
