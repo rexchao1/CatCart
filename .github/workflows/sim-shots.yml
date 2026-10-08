@@ -1,0 +1,41 @@
+# Builds Cat Cart on a macOS runner, plays it in the iPhone simulator, and
+# pushes the screenshots and logs to the claude/ci-results branch.
+# Everything it does lives in ci/run.sh, so a run can change without
+# touching this file.
+name: Simulator shots
+on:
+  push:
+    branches: ['claude/ci-sim']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sim-shots
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          X=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "$X/Contents/Developer"
+          xcodebuild -version
+      - name: Build and shoot
+        run: bash ci/run.sh
+      - name: Publish results
+        if: always()
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p out
+          cp -f ci-run.log out/ 2>/dev/null || true
+          cd out
+          git init -q
+          git checkout -q -b claude/ci-results
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "results for $GITHUB_SHA"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" claude/ci-results
