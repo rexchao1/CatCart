@@ -44,15 +44,17 @@ A real La Croix sparkling-water 12-pack: the short, flat cardboard case, icy bab
 
 The box says LaCroix in navy brush script with "SPARKLING WATER" under it, on an icy-blue wrap with waves and fizz (Rex's call, 2026-09-30: the real name, not Sparkle Wave). The lettering is set in type by `scripts/make_cart_textures.py`, never by an image generator. Four cans stand in the corners. The real brand name is fine for a family gift; it would have to change before any App Store release.
 
-In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v3.py` (revision 4, 2026-10-08; the study and its renders are in `art/options/kitten-cute-v3b`, and the first take with bigger eyes and a looser collar in `art/options/kitten-cute-v3`). `scripts/build_kitten.sh` turns it into the game model: `scripts/blender/export_kitten.py` drops the studio and the strand fur, cuts her to about 24k triangles in the parts the game animates, darkens the creases, and writes JSON; `scripts/build_kitten.swift` adds the in-game colors, the painted iris, and the shell fur, and writes `cat_kitten.scn`. Edit the study script or the .blend, then rerun it. The previous kitten (revision 2, no fur) is `art/options/player/kitten-v2.scn`, and the old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
+In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v4.py` (revision 5, 2026-10-09; the study and its renders are in `art/options/kitten-cute-v4`; revision 4 stays in `art/options/kitten-cute-v3b`, and its first take with bigger eyes and a looser collar in `art/options/kitten-cute-v3`). `scripts/build_kitten.sh` turns it into the game model: `scripts/blender/export_kitten.py` drops the studio and the strand fur, cuts her to about 24k triangles in the parts the game animates, darkens the creases, and writes JSON; `scripts/build_kitten.swift` adds the in-game colors, the painted iris, and the shell fur, and writes `cat_kitten.scn`. Edit the study script or the .blend, then rerun it. The previous kitten (revision 2, no fur) is `art/options/player/kitten-v2.scn`, and the old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
 
 ### Obstacles and pickups
 
 Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared teeth, amber eyes. Their faces move (snarl cycle). You jump over them. You do not land on them.
 
+The coyote is scrappy, not a smooth toy (revision 2, 2026-10-09, after Rex asked for the animations and the coyotes to be as good as possible): a ragged neck ruff and hackles, a bushy low tail with a black tip, big pointed ears pinned back, a long snout with black lips curled off two big fangs, a dark eye mask with amber eyes and a glint, and a coat that goes grizzled gray-brown on the back, cream on the throat and belly, rust on the legs and ears. It runs a rotary gallop: the hinds land, then the fronts, then it stretches out in the air; the body rises and pitches, the head steadies against it, the ears flutter, the tail streams in two links, and the jaw snaps shut once a stride. No two coyotes run in step: each clone starts its gallop at its own point in the stride, at its own pace (within 10%), with its own faint bob and a size within 5% of 1.14 m, and its head leans a little toward the cat.
+
 Pots are gone. Do not bring them back unless Rex asks.
 
-Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city, a mossy log on two stumps in the jungle, a table with a red gingham cloth in the house, a clothesline with a blue sheet on the farm. Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Coyotes stay jump-only; there is no leaping coyote.
+Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city (steel frames with X braces, a walk board, a rail, a paint bucket, and amber lamps that blink), a mossy log on two stumps in the jungle (vines round the stumps, roots, mushrooms and a fern on top), a table with a red gingham cloth in the house (turned legs, a cloth that drapes all round with folds, two plates, a fish, a mug, a vase of flowers), a clothesline on the farm (a blue sheet and a yellow towel that sway on the line, a red sock, pegs, a bird on the post, grass at the feet). Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Only the posts at the lane edges reach below that edge; the rest of each one stays under 2.0 m, where a jump clears it. Coyotes stay jump-only; there is no leaping coyote.
 
 A blocked lane is a coyote prowling under a low thing (the coyote is 1.14 m tall, so it fits). Jump and you hit the low thing; duck and you hit the coyote. The only way past is to steer. This is the Subway Surfers wall, built from pieces the game already has (Rex's call, 2026-10-04).
 
@@ -60,17 +62,19 @@ The chaser is a green plastic spray bottle with a white trigger head, built in c
 
 Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. Some hang in the air over a coyote, at jump height (2.0 m), with no shadow; only a jump reaches them. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
 
-The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`. Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
+The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`, built by `scripts/blender/make_coyote_v2.py` (revision 2, 2026-10-09; revision 1 is `art/options/coyote/coyote-v1.blend`, its renders in `art/options/coyote/blender-study`, and the new renders in `art/options/coyote/v2`). Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
 
 ### Cat trees
 
 These are the Subway Surfers trains. A cat tree occupies one lane, with a flat carpeted top the cart can roll on. Sisal posts, cubbies, hanging toys are fine as long as the rideable roof is obvious.
 
+They look like real, high-end cat furniture, creative and fun (Rex's call, 2026-10-09: "The trees have to look like real cat trees that also are creative and realistic and fun"). The roof is a thick cream carpet platform with rounded edges and a trail of paw prints pressed into the pile, flat for its whole length with nothing standing on it. Under it, thick sisal-wrapped posts (visible rope wraps) frame bays that hold carpeted condos with round portholes in a rolled cream rim or arched doorways, and cat ears on top of the porthole condos. Open bays take turns holding a hammock slung between the posts, a carpet tunnel on the floor (a lookout tube on a tall tree's upper story), or a sisal scratch board leaning up the outer side with cream steps. Toys swing on strings under the roof's edge, outside the ride: a pom-pom at the front, a toy mouse or a feather at the back. Each tree picks an accent carpet (cream, soft gray, mint, blush pink, lavender, or sand) and a toy color, so trees on the road differ. Big readable shapes first: everything has to read from the run camera through the fog. Nothing stands above the roof in the ride path, nothing sticks out of the lane or in front of the tree's front edge.
+
 Two heights and a ramp (Rex's call, 2026-10-05):
 
 - Short tree: one story of cubbies, roof at 2.0 m (was 1.5). A jump from the ground lands on it.
 - Tall tree: two stories of cubbies on a carpeted shelf, roof at 3.5 m. A jump from the ground can't reach it, so its front is a wall. You get up by a ramp or by jumping from a short tree's roof. It is the one tree that should read as a tower you smash into from the road, with its flat roof still obvious.
-- Ramp: a carpeted slope with sisal rope along its edges, climbing from the road to the front of a tree. It is 8 m long at the start speed and stretches with speed like a tree, so the climb takes about half a second.
+- Ramp: a carpeted slope with sisal rope along its edges, a sisal scratch-pad runner up the middle with cream steps across it, and the roof's paw prints leading up, climbing from the road to the front of a tree. It is 8 m long at the start speed and stretches with speed like a tree, so the climb takes about half a second. The slope is the gameplay; the steps are 5 cm of trim.
 
 This is the hard piece. The sprite, the lane width, and the ride length have to agree. If the tree looks like a tall tower you smash into, or like a rug with no height, it is wrong.
 
@@ -85,7 +89,7 @@ The run travels through four places, in this order, looping:
 
 Each world lasts about 10 seconds. You drive into the next one: the road ahead turns into the next place, and the sky, fog, and light blend over as the border comes at you, finishing as the cat crosses it. Nothing fades or cuts on the whole screen at once (Rex's call, 2026-09-30, replacing the old crossfade).
 
-The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SOURCES.txt`), in one bright, chunky cartoon style like Subway Surfers. The road is a flat textured strip per world. The sky is a painted gradient whose bottom matches the fog color, so the far road melts into it.
+The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SOURCES.txt`), in one bright, chunky cartoon style like Subway Surfers. The road is a flat textured strip per world, drawn by `scripts/make_3d_textures.py` (2026-10-09, Rex: "the road and background have to look better"): warm asphalt with cream lane dashes, a yellow curb line, tar patches and a manhole in the city; a packed dirt path with stones, roots, leaf litter, and mossy edges in the jungle; varnished floorboards under one wide runner rug whose woven stripes mark the lanes in the house; a sunny dirt track with tire ruts, gravel, and grass strips with wildflowers on the farm. Lane marks stay on the lane lines. The sky is a painted picture per world whose bottom half is exactly the fog color, so the far road melts into it; above that sits a hazy far layer (city skyline, jungle mountains and canopy, the lit end of the hall, rolling hills with a barn and windmill), then a sun glow and soft clouds. Each world also has its own light: a warm sun and a tinted ambient (blue shade in the city, green bounce in the jungle, cream indoors, sky blue on the farm), with a soft bloom, a touch more saturation, and a faint vignette on the camera. The roadsides carry small life: mailboxes, bus stops, trash cans and cones in the city; ferns, lianas, flowers, rocks, and ponds in the jungle; cat beds, bowls, scratching posts, toys, clocks, and book shelves in the house; sunflowers, troughs, scarecrows, haystacks, and hens on the farm. The first roads and skies are in `art/options/roads-v1` and `art/options/skies-v1`.
 
 ### UI
 
@@ -114,6 +118,8 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 ### Jump
 
 Swipe up to jump. The jump is a real arc: up to 2.6 m (4.4 m with Pounce Springs) and back down under gravity (Rex's call 2026-10-05, was 1.9 m: "I just want the animation higher"). How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.68 s at the start and quickens to about 0.59 s at full ramp (75 s) (Rex's call, 2026-10-05: stronger gravity, faster takeoff and a faster drop; was 0.9 to 0.78 s). The higher peak kept the same airtime, so she just leaves the ground faster and falls harder; every timing stayed the same. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
+
+She has a jump pose (Rex's call, 2026-10-08, asking for more realistic, cuter animation): she stretches tall and looks up as she rises, tucks and curls forward as she falls, ears back and tail streaming against the motion, and the box dips on its wheels when she lands. It is all springs driven by her vertical speed (`KittenCart.swift`), so a slam, a step down off a tree, and a full jump each look different. None of it changes the arc or the timings.
 
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
@@ -191,7 +197,7 @@ White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with scor
 
 ### Feedback that stays
 
-Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. Dust from the wheels. A colored puff and a strong haptic when she grabs a power-up, bubbles from the box while the rocket flies. The food pill pulses when you grab food. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
+Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small widening of the view as she leaves the ground. On landing: a puff, a ring that spreads on the floor and slides back with the road, a squash, and a camera kick, all scaled by how hard she came down (a slam or a Pounce Springs landing also gives a short, small shake). Dust from the wheels, tinted to each world's ground. A grabbed can hops up, spins once, and shrinks into her lap with a few sparkles; power-ups do the same, with a colored puff and a strong haptic, and bubbles from the box while the rocket flies. Food cans bob, turn slowly, and glint now and then; power-up bubbles have a soap-bubble rim. The spray bottle squashes and stretches as it hops and goes "psst" at the top of each hop, with a long spray when it catches her. A crash puts four cartoon stars circling over her head. The food pill pulses when you grab food; the score pill pops once each thousand points. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
 
 ---
 
@@ -224,7 +230,7 @@ Defaults in the game today:
 | Player | 3D kitten with shell fur from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | 3D turquoise salmon can (`wet_food.scn`) |
-| Cat tree | cubby tree with a flat roof, short (one story) and tall (two), carpeted ramp |
+| Cat tree | condo tree with a flat paw-print roof, sisal posts, hammocks, tunnels, swinging toys, short (one story) and tall (two), carpeted ramp with a sisal runner |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
 | App icon | farm-road (kitten in cart, blue sky), from `scripts/make_icon.py` |
@@ -241,24 +247,24 @@ This is the live game, not a wish list.
 
 - SceneKit 3D world, portrait, iPhone 17 simulator scheme. SpriteKit HUD on top.
 - Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
-- 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, and gives slow blinks.
+- 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, glances off to a side with an ear turned that way, and gives slow blinks.
+- She moves like a cat, not a statue in a box (Rex's call, 2026-10-08: "a lot more realistic, more cute"). Everything is little damped springs in `KittenCart.swift`, driven by what the run is doing, not canned clips. Jump: the box rocks back on its wheels, she squeezes then stretches tall on the way up, ears pin back, head tips up to look ahead at the peak, tail lags down; falling, she tucks and curls forward and the tail streams up. Landing: the box dips on its suspension, she squashes, her head nods and bobs a beat late, ears flop, tail whips. Lane change: her head looks where she is going, she and the box lean in, the box yaws and settles, the tail counter-swings with the tip trailing like a whip. Riding: a faint road rattle, breathing, uneven tail sway, asymmetric ear flicks that sometimes answer each other. Duck: ears fold flat and pop back up with her. Fizz Rocket: ears blown back and fluttering, tail streaming out behind. Crash: ears back, eyes squeezed shut, tail down, on top of the tip-over. The duck heights in `docs/plans/duck.md` still hold: the stretch is off while she is ducked.
+- The cart has toy-wagon tires (fat rounded rubber, pale hub, chrome center cap) and the hand holes a real 12-pack has cut near the top of each end.
 - Four power-ups on the road: Fizz Rocket (fly through a food trail), Can Magnet, Pounce Springs (high jumps), Nine Lives (one saved crash), with a callout and timer badges.
-- 3D coyotes with a looping gallop and snapping jaw. Jumpable.
+- 3D coyotes with a looping rotary gallop and snapping jaw, each clone on its own beat, size, and pace, head turned a little toward the cat. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
-- Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
+- Cat trees as real 3D cat furniture: paw-print carpet roof, sisal posts, condos with portholes and cat ears, hammocks, tunnels, scratch boards, swinging toys, an accent carpet per tree. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
 - Speed from 17 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
-- Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
+- Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, collect pop with sparkles, crash stars, trailing camera, speed lines.
 - Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 
 Known gaps against this PRD:
 
-- The kitten has no jump pose; she rides the arc sitting.
-- Coyotes gallop in step with each other.
 - No sound.
 
 ---

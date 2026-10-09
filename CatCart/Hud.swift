@@ -162,17 +162,38 @@ final class Hud: SKScene {
         node.addChild(label)
         node.setScale(0.4)
         node.alpha = 0
-        node.zRotation = -0.04
+        node.zRotation = -0.06
         addChild(node)
-        // Pops up, hangs a moment, then floats away. Faded and hidden at the end,
-        // not removed by an SKAction (see speedLine); the next one removes it.
+        // Pops up with a springy overshoot and a little straightening wobble,
+        // hangs a moment, then floats away. Faded and hidden at the end, not
+        // removed by an SKAction (see speedLine); the next one removes it.
         node.run(.sequence([
-            .group([.fadeIn(withDuration: 0.12), .sequence([.scale(to: 1.12, duration: 0.16), .scale(to: 1, duration: 0.1)])]),
-            .wait(forDuration: 0.85),
+            .group([
+                .fadeIn(withDuration: 0.12),
+                springIn(),
+                .sequence([
+                    .rotate(toAngle: 0.03, duration: 0.14, shortestUnitArc: true),
+                    .rotate(toAngle: -0.01, duration: 0.1, shortestUnitArc: true),
+                    .rotate(toAngle: 0, duration: 0.08, shortestUnitArc: true)
+                ])
+            ]),
+            .wait(forDuration: 0.8),
             .group([.fadeOut(withDuration: 0.3), .moveBy(x: 0, y: 30, duration: 0.3)]),
             .hide()
         ]))
         callout = node
+    }
+
+    /// Scale to 1 the springy way: past it, back under it, and settle. Shared by
+    /// the callout, the crash panel, and the "Dash again" button.
+    private func springIn() -> SKAction {
+        let over = SKAction.scale(to: 1.14, duration: 0.16)
+        over.timingMode = .easeOut
+        let under = SKAction.scale(to: 0.95, duration: 0.1)
+        under.timingMode = .easeInEaseOut
+        let back = SKAction.scale(to: 1.02, duration: 0.07)
+        back.timingMode = .easeInEaseOut
+        return .sequence([over, under, back, .scale(to: 1, duration: 0.05)])
     }
 
     // MARK: - Home
@@ -199,10 +220,15 @@ final class Hud: SKScene {
         fit(title, maxWidth: size.width - 36)
         title.zRotation = -0.035
         top.addChild(title)
-        // A slow bob so the title feels alive while she waits.
+        // A slow bob and an even slower rock so the title feels alive while she waits.
         let bob = SKAction.moveBy(x: 0, y: 5, duration: 1.3)
         bob.timingMode = .easeInEaseOut
         title.run(.repeatForever(.sequence([bob, bob.reversed()])))
+        let rockLeft = SKAction.rotate(toAngle: -0.05, duration: 2.1, shortestUnitArc: true)
+        rockLeft.timingMode = .easeInEaseOut
+        let rockRight = SKAction.rotate(toAngle: -0.02, duration: 2.1, shortestUnitArc: true)
+        rockRight.timingMode = .easeInEaseOut
+        title.run(.repeatForever(.sequence([rockLeft, rockRight])))
 
         let tag = textSprite("Swipe to steer  ·  jump coyotes  ·  ride cat trees", size: 14, weight: .bold, color: .white)
         fit(tag, maxWidth: size.width - 64)
@@ -316,18 +342,25 @@ final class Hud: SKScene {
         again.setScale(0.6)
         panel.addChild(again)
 
-        // Pop in: the panel bounces up, the ribbon drops onto it a beat later.
+        // Pop in: the panel springs up, the ribbon drops onto it a beat later and
+        // settles with a small bounce and a wobble.
         panel.setScale(0.6)
         panel.alpha = 0
-        panel.run(.group([
-            .fadeIn(withDuration: 0.15),
-            .sequence([.scale(to: 1.06, duration: 0.18), .scale(to: 1, duration: 0.1)])
-        ]))
+        panel.run(.group([.fadeIn(withDuration: 0.15), springIn()]))
         banner.alpha = 0
         banner.position.y += 40
         let drop = SKAction.moveBy(x: 0, y: -40, duration: 0.22)
-        drop.timingMode = .easeOut
-        banner.run(.sequence([.wait(forDuration: 0.12), .group([.fadeIn(withDuration: 0.12), drop])]))
+        drop.timingMode = .easeIn
+        let bounce = SKAction.sequence([.moveBy(x: 0, y: 7, duration: 0.08), .moveBy(x: 0, y: -7, duration: 0.08)])
+        let wobble = SKAction.sequence([
+            .rotate(toAngle: 0.025, duration: 0.1, shortestUnitArc: true),
+            .rotate(toAngle: -0.03, duration: 0.12, shortestUnitArc: true)
+        ])
+        banner.run(.sequence([
+            .wait(forDuration: 0.14),
+            .group([.fadeIn(withDuration: 0.1), drop]),
+            .group([bounce, wobble])
+        ]))
 
         if newBest {
             // A gold sticker slapped on the corner when she beats her record.
@@ -363,10 +396,7 @@ final class Hud: SKScene {
     func showRetry() {
         guard let again = panel.childNode(withName: "again") else { return }
         again.run(.sequence([
-            .group([
-                .fadeIn(withDuration: 0.15),
-                .sequence([.scale(to: 1.06, duration: 0.18), .scale(to: 1, duration: 0.1)])
-            ]),
+            .group([.fadeIn(withDuration: 0.15), springIn()]),
             .run { [weak self] in self?.pulse(again) }
         ]))
     }
@@ -648,6 +678,7 @@ final class PillBar: UIView {
     private let scoreLabel = PillBar.makeLabel()
     private let foodLabel = PillBar.makeLabel()
     private var shownFood = -1
+    private var shownScore = -1
 
     private static let chipSize = CGSize(width: 150, height: 40)
     private static let ink = UIColor(red: 0.16, green: 0.30, blue: 0.46, alpha: 1)
@@ -696,6 +727,12 @@ final class PillBar: UIView {
     }
 
     func setScore(_ score: Int) {
+        // A small pop each time the score passes another thousand: a milestone,
+        // not a pop per point.
+        if shownScore >= 0 && score / 1000 > shownScore / 1000 {
+            pop(scoreChip)
+        }
+        shownScore = score
         scoreLabel.text = score.formatted()
     }
 
@@ -705,12 +742,16 @@ final class PillBar: UIView {
         foodLabel.text = "food \(food)"
         if grew {
             // A small pulse on the pill instead of score text flying around the screen.
-            foodChip.layer.removeAllAnimations()
-            foodChip.transform = .identity
-            UIView.animate(withDuration: 0.07, animations: { self.foodChip.transform = CGAffineTransform(scaleX: 1.12, y: 1.12) }) { _ in
-                UIView.animate(withDuration: 0.12) { self.foodChip.transform = .identity }
-            }
+            pop(foodChip)
         }
+    }
+
+    /// A quick swell and a springy settle, the way a toy button would.
+    private func pop(_ chip: UIView) {
+        chip.layer.removeAllAnimations()
+        chip.transform = CGAffineTransform(scaleX: 1.16, y: 1.16)
+        UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 2,
+                       options: [], animations: { chip.transform = .identity })
     }
 
     func setHidden(_ hidden: Bool) {

@@ -57,3 +57,20 @@ Pipeline: `make_kitten_v3.py` (study, renders) → copy to `cat.blend` → `scri
 Numbers: 24k triangles of kitten (as before) plus 8 fur shells over her coat (about 128k triangles, 40 draws, no shadows). Her head still tops out at 1.68 m sitting and about 1.25 m ducked, so the duck heights hold.
 
 Not checked: frame rate on a real iPhone with the fur. If it costs too much, the lever is fewer shells (`furShells`) or a lighter coat mesh for the shells.
+
+## Revision 5: real British Shorthair anatomy
+
+Rex, 2026-10-08, looking at revision 4: "The cat has to look a lot more realistic, more cute." From the run camera (behind and above) she was still one smooth shape: a ball head on a cylinder neck, no shoulders, a pinched waist, flat ears. Revision 5 is a new study, `scripts/blender/make_kitten_v4.py`, saved over `art/models/kitten/cat.blend`. Revision 4 stays in `art/options/kitten-cute-v3b` as the fallback; `make_kitten_v3.py` still builds it.
+
+- [x] Face: jowls under the cheeks (the chipmunk look that makes a BSH face a circle), a short broad muzzle block with a gentle stop under the eyes, a slightly wider nose, whisker-pad dots at the whisker roots, a rounder chin, a faint pale ring around each eye.
+- [x] Eyes: same size as revision 4 (Rex's call). Deeper painted iris: finer and coarser radial fibers with dark crypts between them, a brighter jagged collarette, a wider dark limbal ring, bigger soft pupils, a stronger upper-lid shadow and a faint glow low in the eye. A furred upper-lid fold over each eye so it sits under a brow.
+- [x] Ears: a wider base narrowing to a round tip, tipped out 12 degrees (was 10) and 2 cm thick (was 1.6) so they read plush instead of as plates, the pink showing from the front and the darker-painted backs from behind, five pale furnishings growing out of each bowl (`Left/Right ear furnishing`, exported on the ear so they flick with it).
+- [x] Body: a neck ruff, shoulder blades, a filled-in cobby back (no waist), a round rump, bigger haunches, four toe bumps on each front paw. The tails are thicker, and their fur the longest on her.
+- [x] Coat paint: darker crown with a faint stripe between the ears, darker ear backs, back, spine line and tail; paler muzzle, chin, bib and belly; a faint dusty-lilac sheen in the study material. Fur length: longest on the ruff, bib, cheeks and tail.
+- [x] The study renders a fifth view, `game.png`, from the run camera's angle (behind and above, `docs/plans/camera.md`), so the back of her head and shoulders can be judged where the game sees them.
+- [x] `scripts/blender/run_bpy.py`: runs any of the Blender scripts with the `bpy` Python module on a machine without Blender.app; `scripts/build_kitten.sh` falls back to it.
+- [x] `export_kitten.py`: budgets and thicknesses for the new objects (ear furnishings, upper lids, whisker dots). Everything else, including the part names and pivots the game uses, is unchanged.
+
+Numbers (export of the study): 25,452 triangles of kitten (was 24,136) plus the 8 fur shells over her coat; the painted fur length now reaches 1.57 on the bib (was 1.45), so the top shell stands about 3.3 cm off her chest in the game. Her ear tips top out at 1.001 m in the model (was 0.995), her skull at 0.967 (was 0.962), so she still sits with her head at about 1.68 m in the game; width 0.333 m (was 0.324). The duck heights in `docs/plans/duck.md` hold. Part pivots moved under 5 mm.
+
+Not checked here: the Swift step (`build_kitten.swift`) and the iPhone simulator. This revision was built on a Linux box with the `bpy` module; the Mac runs `scripts/build_kitten.sh` and `swift scripts/check_game_art.swift`.
