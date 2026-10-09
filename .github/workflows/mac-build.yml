@@ -30,7 +30,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 75
     env:
-      ART: ${{ inputs.art || contains(github.event.head_commit.message, '[art]') }}
+      ART_ASKED: ${{ inputs.art || contains(github.event.head_commit.message, '[art]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,7 +41,7 @@ jobs:
           src=$(git log -1 --format=%ct -- art/models scripts/blender/export_kitten.py scripts/blender/export_game_pickup.py scripts/build_kitten.swift scripts/build_game_pickup.swift)
           built=$(git log -1 --format=%ct -- CatCart/Models/cat_kitten.scn CatCart/Models/coyote_run.scn CatCart/Models/wet_food.scn)
           echo "sources $src, built $built"
-          if [ "$src" -gt "$built" ]; then echo "ART=true" >> "$GITHUB_ENV"; fi
+          if [ "$src" -gt "$built" ] || [ "$ART_ASKED" = "true" ]; then echo "ART=true" >> "$GITHUB_ENV"; else echo "ART=false" >> "$GITHUB_ENV"; fi
 
       - name: Pick the newest Xcode
         run: |
