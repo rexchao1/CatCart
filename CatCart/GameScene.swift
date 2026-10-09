@@ -796,7 +796,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 "freeze": { game in
                     game.testFrozen = true
                     game.testLog("freeze")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { game.testFrozen = false }
+                    // CATCART_FREEZE=8 holds it longer, for a slow simulator.
+                    let hold = Double(ProcessInfo.processInfo.environment["CATCART_FREEZE"] ?? "") ?? 3
+                    DispatchQueue.main.asyncAfter(deadline: .now() + hold) { game.testFrozen = false }
                 },
                 "stumble": { game in game.enqueue(.stumble) },
                 "tap": { game in game.touchBegan(at: CGPoint(x: 200, y: 500)); game.touchEnded() },
