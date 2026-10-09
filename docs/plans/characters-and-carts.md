@@ -31,8 +31,8 @@ Same footprint and rim height as the box, so lanes, the duck, and every collisio
 ## Rules
 
 - The choice is saved on the phone (`catChoice`, `cartChoice` in UserDefaults) and kept for the next launch.
-- Home screen: two pills over "Tap to play", one for the cat and one for the cart, each with arrows. Tapping an arrow changes it at once; the home camera already looks at her face, so you see the new cat and cart right away. Swiping left or right on the home screen changes the cat.
-- A run starts on a tap that lifts without swiping, anywhere off the pills. (It used to start on touch-down.)
+- The pickers live in the home screen's menu (the round button in the top-right corner; moved there on 2026-10-09 at Rex's ask). Two pills, one for the cat and one for the cart, each with arrows. Tapping an arrow changes it at once; the home camera already looks at her face and the menu sits low, so you see the new cat and cart right away. With the menu open, swiping left or right changes the cat.
+- A run starts on a tap that lifts without swiping, anywhere else with the menu closed. (It used to start on touch-down.)
 - Swaps only happen on the home screen, never mid-run (`docs/plans/performance.md`).
 - Every cat fits the duck heights in `docs/plans/duck.md`: ducked, the top of her head stays under `lowClearance` (1.38 m). Sitting, she stays under about 1.7 m so the camera framing holds.
 

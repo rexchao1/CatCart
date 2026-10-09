@@ -60,4 +60,18 @@ enum Choices {
         get { UserDefaults.standard.string(forKey: cartKey).flatMap(CartChoice.init) ?? .lacroix }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: cartKey) }
     }
+
+    // The home menu's switches. Both start on. Kept in memory as well, because
+    // the game asks for vibration on every bump and landing.
+    private static let hapticsKey = "hapticsOn"
+    private static let soundKey = "soundOn"
+
+    static var haptics: Bool = UserDefaults.standard.object(forKey: hapticsKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(haptics, forKey: hapticsKey) }
+    }
+
+    /// Saved for when the game has sound. Nothing plays yet.
+    static var sound: Bool = UserDefaults.standard.object(forKey: soundKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(sound, forKey: soundKey) }
+    }
 }

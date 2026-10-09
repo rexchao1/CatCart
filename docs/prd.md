@@ -109,7 +109,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. While she has a power-up, a round cream badge with its picture sits under the score pill, its gold ring running down as it wears off; grabbing one shows its name once in big type ("Fizz Rocket!"). The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, two navy pills with arrows to pick the cat and the cart, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping an arrow (or swiping left or right) changes the pick at once, right there in front of you. A tap anywhere else swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. While she has a power-up, a round cream badge with its picture sits under the score pill, its gold ring running down as it wears off; grabbing one shows its name once in big type ("Fizz Rocket!"). The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, the best score, and a round menu button in the top-right corner (Rex's call, 2026-10-09). The menu opens a navy panel low on the screen, so she stays in view above it: the cat and cart pickers (pills with arrows; a tap changes the pick at once, and so does a swipe left or right while it's open), Sound and Vibration switches, and Done. A tap off the panel closes it. Vibration off silences every haptic. Sound is saved for when the game has sound; nothing plays yet. A tap anywhere else on the home screen, with the menu closed, swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
@@ -225,7 +225,7 @@ Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small w
 | Swipe up | Jump |
 | Swipe down | On the ground, duck into the box. In the air, land now |
 | Tap on the home screen (off the pickers), or on the death panel once "Dash again" shows | Start a run. On the home screen it starts when the finger lifts |
-| Tap a picker arrow, or swipe left / right, on the home screen | Pick the cat or the cart |
+| Tap the menu button on the home screen | Open the menu: pick the cat and cart (arrows, or swipe left / right), Sound and Vibration switches |
 
 One finger. No on-screen buttons during the run. No tilt steering.
 
@@ -277,7 +277,7 @@ This is the live game, not a wish list.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, power-up collect pop, crash stars, trailing camera, speed lines.
-- Six cats (Lilac, Bean, Ginger, Tux, Miso, Fluffy) and four carts (La Croix box, laundry basket, red wagon, cat bed), picked on the home screen and saved.
+- Six cats (Lilac, Bean, Ginger, Tux, Miso, Fluffy) and four carts (La Croix box, laundry basket, red wagon, cat bed), picked in the home screen's menu and saved. The menu also has Sound and Vibration switches.
 - Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 
