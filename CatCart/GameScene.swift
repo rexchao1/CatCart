@@ -235,7 +235,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let spawnAhead: Float = 118
     /// When a run starts, the road is filled with mixes from here out to spawnAhead,
     /// so the first coyote arrives about two seconds after the tap, not eight.
-    private let firstWaveAhead: Float = 40
+    /// Two seconds at the 24 m/s start speed (it was 40 m at 17).
+    private let firstWaveAhead: Float = 48
     /// The road is built out to here so the horizon never shows a gap.
     private let trackDepth: Float = 190
     /// Anything this far behind the cat is off camera and gets recycled.
@@ -369,21 +370,26 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return 1 - (1 - x) * (1 - x)
     }
 
-    /// Running speed in meters per second. 17 at the start, 34 at full ramp
-    /// (about 20 at 8 s, 28 at 30 s, 31 at 45 s). Past 75 s it keeps creeping up
+    /// Running speed at the start of a run and once the ramp is full (75 s), in
+    /// meters per second. Rex, 2026-10-09: "start a lot faster" (it was 17).
+    private let startSpeed: Float = 24
+    private let fullSpeed: Float = 34
+
+    /// Running speed in meters per second. 24 at the start, 34 at full ramp
+    /// (about 26 at 8 s, 30 at 30 s, 32 at 45 s). Past 75 s it keeps creeping up
     /// 1 m/s every 30 s, to 38 at about 3:15, so a long run still gets harder.
     /// Only speed creeps: the jump, clear height, and gaps read `ramp` and stay at
     /// their full-ramp values.
     private func runSpeed() -> Float {
         let overtime = min(4, max(0, timeAlive - rampSeconds) / 30)
-        return 17 + 17 * ramp + overtime
+        return startSpeed + (fullSpeed - startSpeed) * ramp + overtime
     }
 
-    /// Distances inside an obstacle mix are written for 17 m/s. They stretch with
-    /// speed, but less than speed does (the square root), so the faster she goes,
-    /// the less time there is between things: 19 m between two coyotes is 1.1 s at
-    /// the start, about 0.8 s at 34 m/s, and 0.75 s at 38. That squeeze is most of
-    /// what makes a long run hard.
+    /// Distances inside an obstacle mix are written for 17 m/s (the old start
+    /// speed). They stretch with speed, but less than speed does (the square
+    /// root), so the faster she goes, the less time there is between things: 19 m
+    /// between two coyotes is 0.94 s at the start (24 m/s), about 0.8 s at 34 m/s,
+    /// and 0.75 s at 38. That squeeze is most of what makes a long run hard.
     private var spacingScale: Float { (runSpeed() / 17).squareRoot() }
     /// Cat trees stretch fully with speed, so a ride lasts about the same time.
     private var treeScale: Float { runSpeed() / 17 }
@@ -536,9 +542,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private var puffs: [Puff] = []
     private var nextPuff = 0
-    /// Star-shaped emitters for grabbing a can or a power-up. Same idea as the puffs.
-    private var sparkles: [Puff] = []
-    private var nextSparkle = 0
 
     /// A flat ring that spreads on the floor where she lands and slides back
     /// with the road. Three are built up front and reused in turn.
@@ -556,7 +559,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var nextRing = 0
     private let ringTime: Float = 0.38
 
-    /// A can or power-up she just grabbed. It hops, spins, and shrinks into her
+    /// A power-up she just grabbed. It hops, spins, and shrinks into her
     /// lap for a moment before its node goes back to the pool (see flyAway).
     private final class Collected {
         let node: SCNNode
@@ -1521,7 +1524,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // or a landing that fades in about a quarter second.
         fovKick *= max(0, 1 - 7 * dt)
         if fovKick < 0.02 { fovKick = 0 }
-        let boost = CGFloat(max(0, runSpeed() - 17) * 0.35)
+        let boost = CGFloat(max(0, runSpeed() - startSpeed) * 0.35)
         cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0) + CGFloat(fovKick)
 
         // Home screen, or the swoop from it: mix toward the front view of her face.
@@ -3858,21 +3861,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         platform = tree
     }
 
+    /// A can of food or a power-up reaches her. A can just disappears, with a
+    /// light buzz and the food pill's pulse (Rex's call, 2026-10-09: he didn't
+    /// like the hop into her lap). A power-up still hops into her lap.
     private func collect(_ item: TrackItem) {
-        let spot = SCNVector3(item.node.position.x, item.node.position.y + 0.6, 0.2)
         items.removeAll { $0 === item }
-        flyAway(item)
         if let power = item.power {
+            flyAway(item)
             startPower(power)
             return
         }
+        recycle(item)
         food += 1
         haptic(.light)
-        sparkle(at: spot, count: 9, color: UIColor(red: 1.0, green: 0.86, blue: 0.45, alpha: 1))
-        puff(at: spot, count: 6, color: UIColor(red: 1.0, green: 0.72, blue: 0.30, alpha: 1))
     }
 
-    /// The can or power-up she grabbed hops up, spins once, and shrinks into her
+    /// The power-up she grabbed hops up, spins once, and shrinks into her
     /// lap instead of vanishing. Its node stays in the scene for that quarter
     /// second, off the items list so the rules ignore it, then updateCollected
     /// puts it back in its pool.
@@ -3980,7 +3984,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         shakeLeft = time
     }
 
-    /// Builds the puff, sparkle, and ring effects once. Each emitter runs all the
+    /// Builds the puff and ring effects once. Each emitter runs all the
     /// time at a birth rate of 0, and a puff turns it up for a twentieth of a
     /// second. Nothing here is built mid-run.
     private func buildPuffs() {
@@ -4003,30 +4007,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             scene.rootNode.addChildNode(holder)
             puffs.append(Puff(node: holder, system: ps))
         }
-        // Sparkles: little stars that twirl up out of a can or power-up she grabs.
-        let star = Self.drawStar(points: 4, color: UIColor(white: 1, alpha: 1), outline: nil)
-        for _ in 0..<3 {
-            let ps = SCNParticleSystem()
-            ps.particleImage = star
-            ps.birthRate = 0
-            ps.particleLifeSpan = 0.5
-            ps.particleLifeSpanVariation = 0.15
-            ps.particleSize = 0.26
-            ps.particleSizeVariation = 0.1
-            ps.particleVelocity = 2.4
-            ps.particleVelocityVariation = 1.2
-            ps.emittingDirection = SCNVector3(0, 1, 0.4)
-            ps.spreadingAngle = 60
-            ps.acceleration = SCNVector3(0, -2.5, 2.5)
-            ps.particleAngularVelocity = 180
-            ps.particleAngularVelocityVariation = 120
-            ps.blendMode = .alpha
-            ps.propertyControllers = [.opacity: Self.fadeOutController()]
-            let holder = SCNNode()
-            holder.addParticleSystem(ps)
-            scene.rootNode.addChildNode(holder)
-            sparkles.append(Puff(node: holder, system: ps))
-        }
         // Landing rings: a soft ring picture lying on the floor that spreads and fades.
         let ringMaterial = SCNMaterial()
         ringMaterial.diffuse.contents = Self.drawRing()
@@ -4043,17 +4023,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             scene.rootNode.addChildNode(node)
             rings.append(Ring(node: node))
         }
-    }
-
-    /// Fires the next sparkle emitter in turn, like puff.
-    private func sparkle(at point: SCNVector3, count: Int, color: UIColor) {
-        guard !sparkles.isEmpty else { return }
-        let p = sparkles[nextSparkle]
-        nextSparkle = (nextSparkle + 1) % sparkles.count
-        p.node.position = point
-        p.system.particleColor = color
-        p.system.birthRate = CGFloat(count) * 20
-        p.left = 0.05
     }
 
     /// A ring that spreads on the floor where she landed. `strength` (0 to 1) is
@@ -4086,7 +4055,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     /// Fires the next puff emitter in turn. Four is plenty: a puff lasts under half
-    /// a second, and at most a landing and a can or two happen that close together.
+    /// a second, and at most a landing, a lane-change scuff, and a power-up happen
+    /// that close together.
     private func puff(at point: SCNVector3, count: Int, color: UIColor) {
         guard !puffs.isEmpty else { return }
         let p = puffs[nextPuff]
@@ -4100,10 +4070,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Turns each puff back off once its twentieth of a second is up.
     private func updatePuffs(dt: Float) {
         for p in puffs where p.left > 0 {
-            p.left -= dt
-            if p.left <= 0 { p.system.birthRate = 0 }
-        }
-        for p in sparkles where p.left > 0 {
             p.left -= dt
             if p.left <= 0 { p.system.birthRate = 0 }
         }
@@ -4553,7 +4519,7 @@ private extension GameScene {
         }
     }
 
-    /// A star with `points` points: four for sparkles and glints, five with an
+    /// A star with `points` points: four for glints, five with an
     /// outline for the cartoon stars over her head after a crash.
     static func drawStar(points: Int, color: UIColor, outline: UIColor?) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { ctx in
