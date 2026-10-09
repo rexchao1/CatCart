@@ -25,7 +25,7 @@ Same footprint and rim height as the box, so lanes, the duck, and every collisio
 |---|---|---|
 | lacroix | La Croix | The 12-pack box. Unchanged, the default. |
 | basket | Laundry Basket | A mint plastic laundry basket with slotted sides and rounded corners, on swivel casters. |
-| wagon | Red Wagon | A red metal toy wagon tub with a rolled rim, big white-wall wheels, and its handle folded back over the front. |
+| wagon | Red Wagon | A red metal toy wagon tub with a rolled rim, big white-wall wheels, and its handle out the front. |
 | bed | Cat Bed | A round plush donut bed, pink with a cream lining, on little wooden wheels. |
 
 ## Rules
@@ -48,9 +48,9 @@ Same footprint and rim height as the box, so lanes, the duck, and every collisio
 | # | Step | State |
 |---|---|---|
 | 1 | Choice plumbing: `CatChoice`/`CartChoice`, saved, KittenCart can swap cat and cart | done |
-| 2 | Home picker pills, tap-on-lift start, swipe to change cat | done (taps on the pills not yet tried by hand) |
+| 2 | Home picker pills, tap-on-lift start, swipe to change cat | done. Swipe swap and save across relaunch checked in the simulator; tapping the pills with a finger not yet tried |
 | 3 | Three new carts built in code | done, checked in the simulator (home and run) |
-| 4 | Breed profiles in the kitten script; per-breed colors through the exporter and `build_kitten.swift` | todo |
-| 5 | Build the five new cats (Bean first), look at their renders, fix what reads wrong | todo |
-| 6 | Duck heights and art check for each cat; simulator screenshots | todo |
-| 7 | PRD and AGENTS.md updates | todo |
+| 4 | Breed profiles in the kitten script; per-breed colors through the exporter and `build_kitten.swift` | done |
+| 5 | Build the five new cats (Bean first), look at their renders, fix what reads wrong | done. Studies in `art/options/cats` |
+| 6 | Duck heights and art check for each cat; simulator screenshots | done (heights in `docs/plans/duck.md`) |
+| 7 | PRD and AGENTS.md updates | done |

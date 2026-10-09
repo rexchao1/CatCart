@@ -59,26 +59,29 @@ let legA=leg.presentation.eulerAngles.x,jawA=jaw.presentation.eulerAngles.x
 render(0.225,"coyote-snap.png")
 precondition(abs(leg.presentation.eulerAngles.x-legA)>0.1,"Clone legs do not animate")
 precondition(abs(jaw.presentation.eulerAngles.x-jawA)>0.03,"Clone jaw does not animate")
-// The kitten: every part the game animates, her fur shaders (they must survive
-// the save), and the iris picture embedded in each eye.
-let kittenFile=try! SCNScene(url:root.appendingPathComponent("CatCart/Models/cat_kitten.scn"),options:nil)
-guard let kitten=kittenFile.rootNode.childNode(withName:"kitten",recursively:false) else { fatalError("Missing kitten") }
-for name in ["body","head","earL","earR","eyeL","eyeR","tail","tailTip"] {
-    precondition(kitten.childNode(withName:name,recursively:true) != nil,"Kitten is missing \(name)")
-}
-var furShells=0,furSkin=0
-kitten.enumerateHierarchy { n,_ in
-    for m in n.geometry?.materials ?? [] where m.shaderModifiers?[.surface] != nil {
-        if n.name=="fur" { furShells+=1 } else { furSkin+=1 }
+// Every cat the player can pick (CatCart/Choices.swift): every part the game
+// animates, the fur shaders (they must survive the save), and the iris picture
+// embedded in each eye.
+for model in ["cat_kitten","cat_bean","cat_ginger","cat_tux","cat_siamese","cat_fluffy"] {
+    let kittenFile=try! SCNScene(url:root.appendingPathComponent("CatCart/Models/\(model).scn"),options:nil)
+    guard let kitten=kittenFile.rootNode.childNode(withName:"kitten",recursively:false) else { fatalError("Missing kitten in \(model)") }
+    for name in ["body","head","earL","earR","eyeL","eyeR","tail","tailTip"] {
+        precondition(kitten.childNode(withName:name,recursively:true) != nil,"\(model) is missing \(name)")
     }
+    var furShells=0,furSkin=0
+    kitten.enumerateHierarchy { n,_ in
+        for m in n.geometry?.materials ?? [] where m.shaderModifiers?[.surface] != nil {
+            if n.name=="fur" { furShells+=1 } else { furSkin+=1 }
+        }
+    }
+    precondition(furShells>=8 && furSkin>=1,"\(model) fur shaders are missing")
+    for name in ["eyeL","eyeR"] {
+        let eye=kitten.childNode(withName:name,recursively:true)!
+        let iris=eye.geometry?.materials.contains { m in
+            (m.diffuse.contents as? NSImage) != nil || (m.diffuse.contents as? Data).flatMap { NSImage(data:$0) } != nil
+        } ?? false
+        precondition(iris,"\(model) \(name) must carry its iris picture")
+    }
+    print("\(model): \(furShells) fur shell materials, iris pictures embedded")
 }
-precondition(furShells>=8 && furSkin>=1,"Kitten fur shaders are missing")
-for name in ["eyeL","eyeR"] {
-    let eye=kitten.childNode(withName:name,recursively:true)!
-    let iris=eye.geometry?.materials.contains { m in
-        (m.diffuse.contents as? NSImage) != nil || (m.diffuse.contents as? Data).flatMap { NSImage(data:$0) } != nil
-    } ?? false
-    precondition(iris,"\(name) must carry its iris picture")
-}
-print("kitten: \(furShells) fur shell materials, iris pictures embedded")
-print("PASS: embedded food label, game geometry budgets, coyote clone gallop and snarl, kitten fur and eyes")
+print("PASS: embedded food label, game geometry budgets, coyote clone gallop and snarl, fur and eyes on every cat")

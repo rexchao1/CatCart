@@ -46,6 +46,22 @@ The box says LaCroix in navy brush script with "SPARKLING WATER" under it, on an
 
 In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the logo on the back and front, four spinning wheels. The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v4.py` (revision 5, 2026-10-09; the study and its renders are in `art/options/kitten-cute-v4`; revision 4 stays in `art/options/kitten-cute-v3b`, and its first take with bigger eyes and a looser collar in `art/options/kitten-cute-v3`). `scripts/build_kitten.sh` turns it into the game model: `scripts/blender/export_kitten.py` drops the studio and the strand fur, cuts her to about 24k triangles in the parts the game animates, darkens the creases, and writes JSON; `scripts/build_kitten.swift` adds the in-game colors, the painted iris, and the shell fur, and writes `cat_kitten.scn`. Edit the study script or the .blend, then rerun it. The previous kitten (revision 2, no fur) is `art/options/player/kitten-v2.scn`, and the old cartoon kitten is `art/options/player/kitten-cartoon.scn`, built by `scripts/blender/make_cat.py`. Her tail is held up so the name on the back stays readable. The photos themselves are never committed or uploaded.
 
+### Picking a cat and a cart
+
+The lilac kitten in the La Croix box is the default, and everything above about her and the box still holds. On the home screen you can pick a different cat and a different cart (Rex's call, 2026-10-08: "add in more characters to choose from. And you can choose a certain cart"). All are open from the start, with nothing to unlock. The pick is saved on the phone.
+
+The other cats are real models, not recolors of her, built by her Blender script with a breed (`--breed` in `scripts/blender/make_kitten_v4.py`), so each has her parts, her animations, and her shell fur:
+
+- Bean: a real cat from a photo Rex shared. A British Shorthair like her, in a brown-silver classic tabby: an M on his forehead, lines down his crown and spine, swirls on his flanks, a ringed tail, a pale muzzle, hazel eyes, a blue collar.
+- Ginger: an orange mackerel tabby with green-gold eyes and a teal collar.
+- Tux: a black-and-white tuxedo (white muzzle, blaze, bib, belly, and paws) with green eyes and a red collar.
+- Miso: a Siamese, cream with seal-brown points, blue eyes, bigger ears and a finer face, a pink collar.
+- Fluffy: a Maine Coon kitten, long brown tabby fur, lynx tips on his ears, a bushy tail, amber eyes, a purple collar.
+
+The other carts are built in code beside the box, the box's exact size with her seat and rim at the same heights, so lanes, the duck, and every hit work the same in each: a mint laundry basket with slotted sides on swivel casters, a shiny red toy wagon with white-wall tires and a handle out the front, and a pink donut cat bed with a cream top on little wooden wheels. The cans and the La Croix logo belong to the box only.
+
+Every cat fits the duck heights in `docs/plans/duck.md`. The list and the rules are in `docs/plans/characters-and-carts.md`.
+
 ### Obstacles and pickups
 
 Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared teeth, amber eyes. Their faces move (snarl cycle). You jump over them. You do not land on them.
@@ -93,7 +109,7 @@ The worlds are built from 3D model kits (free CC0 kits, listed in `art/models/SO
 
 ### UI
 
-Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. While she has a power-up, a round cream badge with its picture sits under the score pill, its gold ring running down as it wears off; grabbing one shows its name once in big type ("Fizz Rocket!"). The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
+Casual, creamy, icy-blue, paw ornaments. HUD is two pills: score, food count. While she has a power-up, a round cream badge with its picture sits under the score pill, its gold ring running down as it wears off; grabbing one shows its name once in big type ("Fizz Rocket!"). The home screen looks at her face from the front: big white "Cat Cart" title in chunky rounded type with a navy outline, a one-line hint, two navy pills with arrows to pick the cat and the cart, a glossy "Tap to play" button with the paw on its end, and the best score. Tapping an arrow (or swiping left or right) changes the pick at once, right there in front of you. A tap anywhere else swoops the camera around behind her and the run starts. Death dims the world and pops a rounded panel: a pink "Oh no!" ribbon, three big numbers across (score, food, and time survived like 1:12), the best score under them, and a gold "New best!" sticker when she beats it. No other stats. A "Dash again" paw button pops in under it once the 1 s death pause is over, and a tap then runs again without going home (Rex's call, 2026-10-05). The pills hide while the panel is up. No tiny type. No clutter. Extra panel and button takes live in `art/options/ui` for Rex to delete.
 
 ---
 
@@ -208,7 +224,8 @@ Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small w
 | Swipe left / right | Change lane |
 | Swipe up | Jump |
 | Swipe down | On the ground, duck into the box. In the air, land now |
-| Tap on the home screen, or on the death panel once "Dash again" shows | Start a run |
+| Tap on the home screen (off the pickers), or on the death panel once "Dash again" shows | Start a run. On the home screen it starts when the finger lifts |
+| Tap a picker arrow, or swipe left / right, on the home screen | Pick the cat or the cart |
 
 One finger. No on-screen buttons during the run. No tilt steering.
 
@@ -260,6 +277,7 @@ This is the live game, not a wish list.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
 - Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, power-up collect pop, crash stars, trailing camera, speed lines.
+- Six cats (Lilac, Bean, Ginger, Tux, Miso, Fluffy) and four carts (La Croix box, laundry basket, red wagon, cat bed), picked on the home screen and saved.
 - Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 

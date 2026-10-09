@@ -113,7 +113,7 @@ BREEDS = {
                 ear_skin=0xC4949A, nose=0x4A3A3E, line=0x141012, crease=0x141012,
                 iris=(0xDCE274, 0xA2CC52, 0x62A03E, 0x203010), collarette=0xF0F4B0,
                 collar=0xE0303C, stitch=0xFFD8DC, sheen=(.8, .8, .85), cheeks=.97),
-    "siamese": dict(coat=0xF0E4D2, light=0xFAF5EC, dark=0xDCCBB2, stripe=0x4E3729, pattern="points",
+    "siamese": dict(coat=0xEEDFC8, light=0xFAF5EC, dark=0xD4BE9E, stripe=0x4E3729, pattern="points",
                     ear_skin=0xA8807A, nose=0x5A4038, line=0x2E2420, crease=0x6A5446,
                     iris=(0xC6E8FF, 0x74BAF2, 0x3A80CA, 0x152C50), collarette=0xE6F6FF,
                     collar=0xE85C9A, stitch=0xFFE0EE, sheen=(.95, .92, .88),
@@ -122,7 +122,7 @@ BREEDS = {
                    ear_skin=0xD8A098, nose=0xB06E5E, line=0x2E2018, crease=0x4A382A,
                    iris=(0xF2CA52, 0xDA9C32, 0xAA681E, 0x3E2510), collarette=0xFFE9A6,
                    collar=0x7A4FD0, stitch=0xE8DCFF, sheen=(.95, .88, .8),
-                   ear_h=1.12, tufts=True, fur=1.75, tail=1.3, stripe_strength=.55),
+                   ear_h=1.12, tufts=True, fur=1.75, tail=1.3, stripe_strength=.75),
 }
 if BREED not in BREEDS:
     sys.exit("unknown breed " + BREED + "; pick one of " + ", ".join(BREEDS))
@@ -746,6 +746,8 @@ def pattern_paint(c, p, n, kind):
         t *= smoothstep(fade, fade - .08, lum(c) - lum(BASE)) * B.get("stripe_strength", .85)
         return mixc(c, STRIPE_C, t)
     if PATTERN == "tuxedo":
+        # Solid black first: her pale bib, belly, and eye rings would turn it gray.
+        c = mixc(BASE, DARK, .5 * smoothstep(.0, .8, -n.y))
         w = 0.0
         if kind == "head":
             d = (p - MUZZLE).length
@@ -764,7 +766,8 @@ def pattern_paint(c, p, n, kind):
         k = 0.0
         if kind == "head":
             d = (p - MUZZLE).length
-            k = smoothstep(.2, .07, d) * .95
+            # The mask covers the muzzle and reaches up around the eyes.
+            k = smoothstep(.27, .12, d) * .95
         elif kind == "leg":
             k = smoothstep(.42, .15, p.z) * .9
         elif kind == "tail":
