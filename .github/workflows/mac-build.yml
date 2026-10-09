@@ -34,7 +34,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          fetch-depth: 0
+
+      - name: Re-export models whose sources changed since they were built
+        run: |
+          src=$(git log -1 --format=%ct -- art/models scripts/blender/export_kitten.py scripts/blender/export_game_pickup.py scripts/build_kitten.swift scripts/build_game_pickup.swift)
+          built=$(git log -1 --format=%ct -- CatCart/Models/cat_kitten.scn CatCart/Models/coyote_run.scn CatCart/Models/wet_food.scn)
+          echo "sources $src, built $built"
+          if [ "$src" -gt "$built" ]; then echo "ART=true" >> "$GITHUB_ENV"; fi
 
       - name: Pick the newest Xcode
         run: |
