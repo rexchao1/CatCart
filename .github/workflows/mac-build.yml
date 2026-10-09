@@ -110,19 +110,19 @@ jobs:
           RUNENV=(SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_GOD=1 SIMCTL_CHILD_CATCART_PILOT=1 SIMCTL_CHILD_CATCART_FREEZE=9)
           # Warm-up launch: the first launch compiles shaders and is slow.
           go warmup 8 -- "${RUNENV[@]}"
-          go home 4 2 -- SIMCTL_CHILD_CATCART_X=1
+          go home 9 2 -- SIMCTL_CHILD_CATCART_X=1
           go city 1.5 1 1 2 3 -- "${RUNENV[@]}"
           for w in jungle house farm; do go "$w" 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_WORLD=$w; done
           # Frozen moments: a jump on the way up, at the top, a lane change, a duck.
-          go jumpup 8 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.12:freeze"
-          go jumptop 8 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.33:freeze"
-          go landing 8 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.72:freeze"
-          go lane 8 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:left,3.1:freeze"
-          go duck 8 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:down,3.15:freeze"
-          go bottle 9 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:stumble,4:freeze"
-          go rocket 10 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="2:rocket,5:freeze"
+          go jumpup 12.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.12:freeze"
+          go jumptop 12.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.33:freeze"
+          go landing 12.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.72:freeze"
+          go lane 12.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:left,3.1:freeze"
+          go duck 12.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:down,3.15:freeze"
+          go bottle 13.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:stumble,4:freeze"
+          go rocket 15 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="2:rocket,5:freeze"
           go hard 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_TIME=40
-          go crash 6 -- SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_SWIPES="3:stumble,3.4:stumble"
+          go crash 12 -- SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_SWIPES="3:stumble,3.4:stumble"
           ls "$OUT"
 
       - name: Commit screenshots (and re-exported models)
