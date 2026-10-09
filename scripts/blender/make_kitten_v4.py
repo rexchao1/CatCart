@@ -25,8 +25,13 @@ a real BSH kitten:
   fur shells from it (scripts/build_kitten.swift).
 
 Run headless from the repo root (Blender 5.2 or the bpy module):
-  Blender -b --python-exit-code 1 --python scripts/blender/make_kitten_v4.py -- OUTDIR [--quick] [--nofur] [--norender]
+  Blender -b --python-exit-code 1 --python scripts/blender/make_kitten_v4.py -- OUTDIR [--breed NAME] [--quick] [--nofur] [--norender]
   python3 scripts/blender/run_bpy.py - scripts/blender/make_kitten_v4.py -- OUTDIR [...]
+
+--breed builds one of the other cats the player can pick (see BREEDS below and
+docs/plans/characters-and-carts.md) with the same parts, so the game animates
+them all the same way. Without it, it builds her, unchanged. A breed writes
+OUTDIR/cat-NAME.blend instead of kitten-cute-v4.blend.
 
 Writes OUTDIR/kitten-cute-v4.blend, OUTDIR/iris.png, and portrait, front,
 face, rear and game (the run camera's view, from behind and above) renders.
@@ -53,7 +58,11 @@ from mathutils import Vector, Matrix
 from mathutils.bvhtree import BVHTree
 
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-OUT = Path(next((a for a in args if not a.startswith("--")), "art/options/kitten-cute-v4")).resolve()
+BREED = args[args.index("--breed") + 1] if "--breed" in args else "lilac"
+if "--breed" in args:
+    del args[args.index("--breed"):args.index("--breed") + 2]
+OUT = Path(next((a for a in args if not a.startswith("--")),
+                "art/options/kitten-cute-v4" if BREED == "lilac" else "art/options/cats/" + BREED)).resolve()
 QUICK = "--quick" in args
 FUR = "--nofur" not in args
 RENDER = "--norender" not in args
@@ -73,16 +82,71 @@ def hex_lin(h):
     return (lin(h >> 16 & 255), lin(h >> 8 & 255), lin(h & 255))
 
 
+# ---------------------------------------------------------------- breeds
+# Every cat the player can pick. "lilac" is her, and its values are hers; the
+# others change only what they list. Colors are sRGB hex.
+#   coat, light, dark: the coat's middle, its pale parts (muzzle, bib, belly)
+#     and its dark parts (crown, back, tail), as for her.
+#   pattern: None, "classic" (tabby swirls on the flanks), "mackerel" (tabby
+#     stripes around the body), "tuxedo" (dark with white muzzle, bib, belly,
+#     paws), or "points" (Siamese: dark face mask, ears, legs, and tail).
+#   stripe: the tabby stripes' or the points' color.
+#   iris: inner, middle, outer, and the dark ring, center outward; collarette:
+#     the bright jagged ring around the pupil.
+#   collar, stitch: her collar and its stitching (hers is orange).
+#   cheeks: width of the cheeks and jowls; muzzle: how far forward the muzzle
+#     sits (meters); slim: body width; ear_w, ear_h: ear size; tufts: lynx tips
+#     on the ears; fur: fur length; tail: tail thickness.
+BREEDS = {
+    "lilac": {},
+    # Bean, a real cat from a photo Rex shared: a British Shorthair like her,
+    # so her shape, in a brown-silver classic tabby with hazel eyes.
+    "bean": dict(coat=0xA58C74, light=0xE8DCCB, dark=0x75604C, stripe=0x30261E, pattern="classic",
+                 ear_skin=0xD6A49C, nose=0xB27468, line=0x3A2E28, crease=0x5A4E44,
+                 iris=(0xE2A23E, 0xC49A3C, 0x8C9444, 0x2E3218), collarette=0xF6DE96,
+                 collar=0x2F86E0, stitch=0xD8ECFF, sheen=(.95, .88, .8), cheeks=1.04, stripe_strength=1.0),
+    "ginger": dict(coat=0xE8A058, light=0xFAE6CC, dark=0xCC7A34, stripe=0xA85A20, pattern="mackerel",
+                   ear_skin=0xF0B0A8, nose=0xE58C8C, line=0x7A4A30, crease=0x9A6A48,
+                   iris=(0xEAD058, 0xC2C24A, 0x90AA3E, 0x3A3A10), collarette=0xF8F0A8,
+                   collar=0x22B0A0, stitch=0xD8FFF6, sheen=(1, .9, .8), cheeks=.94),
+    "tux": dict(coat=0x2E2A2C, light=0xF4F1EE, dark=0x1E1B1D, pattern="tuxedo",
+                ear_skin=0xC4949A, nose=0x4A3A3E, line=0x141012, crease=0x141012,
+                iris=(0xDCE274, 0xA2CC52, 0x62A03E, 0x203010), collarette=0xF0F4B0,
+                collar=0xE0303C, stitch=0xFFD8DC, sheen=(.8, .8, .85), cheeks=.97),
+    "siamese": dict(coat=0xEEDFC8, light=0xFAF5EC, dark=0xD4BE9E, stripe=0x4E3729, pattern="points",
+                    ear_skin=0xA8807A, nose=0x5A4038, line=0x2E2420, crease=0x6A5446,
+                    iris=(0xC6E8FF, 0x74BAF2, 0x3A80CA, 0x152C50), collarette=0xE6F6FF,
+                    collar=0xE85C9A, stitch=0xFFE0EE, sheen=(.95, .92, .88),
+                    cheeks=.86, muzzle=.022, slim=.92, ear_w=1.12, ear_h=1.3),
+    "fluffy": dict(coat=0x8C6C4E, light=0xEAD8C0, dark=0x5E4632, stripe=0x3A2A1E, pattern="mackerel",
+                   ear_skin=0xD8A098, nose=0xB06E5E, line=0x2E2018, crease=0x4A382A,
+                   iris=(0xF2CA52, 0xDA9C32, 0xAA681E, 0x3E2510), collarette=0xFFE9A6,
+                   collar=0x7A4FD0, stitch=0xE8DCFF, sheen=(.95, .88, .8),
+                   ear_h=1.12, tufts=True, fur=1.75, tail=1.3, stripe_strength=.75),
+}
+if BREED not in BREEDS:
+    sys.exit("unknown breed " + BREED + "; pick one of " + ", ".join(BREEDS))
+B = BREEDS[BREED]
+
 # ---------------------------------------------------------------- palette
 # These are the study's render colors. The game reads the same hex values in
-# scripts/build_kitten.swift, so a change here should go there too.
-COAT_BASE = 0xA49CA3    # warm dove gray, a faint lilac cast
-COAT_LIGHT = 0xD6CFD1   # muzzle, chin, bib, belly
-COAT_DARK = 0x857D85    # crown, ear backs, back, tail
-EAR_SKIN = 0xD8A7B0     # pale pink-mauve inside the ears
-NOSE = 0xC08A96         # lilac-pink nose leather
-LINE = 0x5E4C55         # lid rims and mouth: dark mauve, softer than black
+# scripts/build_kitten.swift (for a breed, through the palette in the export),
+# so a change to hers here should go there too.
+COAT_BASE = B.get("coat", 0xA49CA3)    # warm dove gray, a faint lilac cast
+COAT_LIGHT = B.get("light", 0xD6CFD1)  # muzzle, chin, bib, belly
+COAT_DARK = B.get("dark", 0x857D85)    # crown, ear backs, back, tail
+EAR_SKIN = B.get("ear_skin", 0xD8A7B0) # pale pink-mauve inside the ears
+NOSE = B.get("nose", 0xC08A96)         # lilac-pink nose leather
+LINE = B.get("line", 0x5E4C55)         # lid rims and mouth: dark mauve, softer than black
 WHISKER = 0xF4F1EC
+PATTERN = B.get("pattern")
+STRIPE = B.get("stripe", COAT_DARK)
+CHEEKS = B.get("cheeks", 1.0)
+MZ = B.get("muzzle", 0.0)
+SLIM = B.get("slim", 1.0)
+EAR_W, EAR_H = B.get("ear_w", 1.0), B.get("ear_h", 1.0)
+FUR_SCALE = B.get("fur", 1.0)
+TAIL_R = B.get("tail", 1.0)
 
 
 def material(name, rgb, rough=.7):
@@ -102,7 +166,7 @@ nosemat = material("kittenNose", NOSE, .42)
 linemat = material("kittenMouth", LINE, .5)
 whiskermat = material("kittenWhisker", WHISKER, .5)
 shinemat = material("kittenShine", 0xFFFFFF, .2)
-creasemat = material("kittenCrease", 0x6F676E, .8)
+creasemat = material("kittenCrease", B.get("crease", 0x6F676E), .8)
 eyemat = material("kittenEye", 0xD8A040, .12)
 
 # The coat reads its color from the painted attribute, with a fine bump so the
@@ -123,7 +187,7 @@ nt.links.new(dim.outputs["Result"], bsdf.inputs["Base Color"])
 # A faint dusty-lilac sheen where light grazes the coat, like a real lilac's.
 bsdf.inputs["Sheen Weight"].default_value = .45
 bsdf.inputs["Sheen Roughness"].default_value = .4
-bsdf.inputs["Sheen Tint"].default_value = (.86, .78, .88, 1)
+bsdf.inputs["Sheen Tint"].default_value = (*B.get("sheen", (.86, .78, .88)), 1)
 noise = nt.nodes.new("ShaderNodeTexNoise")
 noise.inputs["Scale"].default_value = 160
 bump = nt.nodes.new("ShaderNodeBump")
@@ -227,6 +291,9 @@ body = fuse("Torso and haunches", [
     ell("Left rear foot", (-.208, .085, .056), (.09, .15, .058)),
     ell("Right rear foot", (.208, .085, .056), (.09, .15, .058)),
 ])
+if SLIM != 1:
+    for v in body.data.vertices:
+        v.co.x *= SLIM
 for side in (-1, 1):
     paw = [ell("Upper foreleg", (side * .095, .11, .36), (.074, .09, .19)),
            ell("Forearm", (side * .098, .172, .19), (.061, .066, .17)),
@@ -235,10 +302,13 @@ for side in (-1, 1):
     for i in range(4):
         dx = (i - 1.5) * .034
         paw.append(ell("Toe", (side * .102 + dx, .29, .036), (.019, .03, .03), segments=16, rings=10))
-    fuse("Left foreleg" if side < 0 else "Right foreleg", paw, .0035)
+    leg = fuse("Left foreleg" if side < 0 else "Right foreleg", paw, .0035)
+    if SLIM != 1:
+        for v in leg.data.vertices:
+            v.co.x *= SLIM
     # Three soft creases between the toes.
     for dx in (-.034, 0, .034):
-        x = side * .102 + dx
+        x = (side * .102 + dx) * SLIM
         curve("Toe crease", [(x, .318, .028), (x, .312, .05), (x, .298, .068)], .0017, creasemat, res=4)
 
 # ---------------------------------------------------------------- head
@@ -248,16 +318,16 @@ for side in (-1, 1):
 # of an egg; the muzzle is short and broad with a gentle stop under the eyes.
 head = fuse("Head cheeks and short muzzle", [
     ell("Skull", (0, .07, .79), (.216, .185, .19)),
-    ell("Left cheek", (-.112, .12, .716), (.112, .122, .108)),
-    ell("Right cheek", (.112, .12, .716), (.112, .122, .108)),
-    ell("Left jowl", (-.092, .14, .66), (.092, .1, .072)),
-    ell("Right jowl", (.092, .14, .66), (.092, .1, .072)),
-    ell("Jaw", (0, .14, .665), (.13, .11, .066)),
-    ell("Nose bridge", (0, .215, .748), (.06, .058, .08)),
-    ell("Muzzle", (0, .245, .69), (.082, .056, .056)),
-    ell("Left whisker pad", (-.043, .26, .683), (.062, .05, .047)),
-    ell("Right whisker pad", (.043, .26, .683), (.062, .05, .047)),
-    ell("Chin", (0, .238, .641), (.056, .046, .03)),
+    ell("Left cheek", (-.112 * CHEEKS, .12, .716), (.112 * CHEEKS, .122, .108)),
+    ell("Right cheek", (.112 * CHEEKS, .12, .716), (.112 * CHEEKS, .122, .108)),
+    ell("Left jowl", (-.092 * CHEEKS, .14, .66), (.092 * CHEEKS, .1, .072)),
+    ell("Right jowl", (.092 * CHEEKS, .14, .66), (.092 * CHEEKS, .1, .072)),
+    ell("Jaw", (0, .14, .665), (.13 * CHEEKS, .11, .066)),
+    ell("Nose bridge", (0, .215 + MZ * .6, .748), (.06, .058 + MZ * .5, .08)),
+    ell("Muzzle", (0, .245 + MZ, .69), (.082, .056, .056)),
+    ell("Left whisker pad", (-.043, .26 + MZ, .683), (.062, .05, .047)),
+    ell("Right whisker pad", (.043, .26 + MZ, .683), (.062, .05, .047)),
+    ell("Chin", (0, .238 + MZ, .641), (.056, .046, .03)),
 ], .003)
 # A softer forehead than a cartoon dome, rounder than revision 2's flat top.
 for v in head.data.vertices:
@@ -479,8 +549,8 @@ for side in (-1, 1):
         a = math.pi * j / 16
         # A wide base narrowing to a soft, round tip: a BSH ear is a short
         # rounded triangle, not a tall leaf.
-        x = -.067 * math.cos(a) * (1 - .2 * math.sin(a) ** 2)
-        z = .105 * math.sin(a) ** 1.2
+        x = -.067 * EAR_W * math.cos(a) * (1 - .2 * math.sin(a) ** 2)
+        z = .105 * EAR_H * math.sin(a) ** 1.2
         x += .012 * math.sin(a) ** 3       # the tip leans outward
         outline_pts.append(Vector((x, 0, z)))
     verts, faces, mats = [], [], []
@@ -550,6 +620,15 @@ for side in (-1, 1):
         w = base + ear_frame @ root
         curve("Left ear furnishing" if side < 0 else "Right ear furnishing",
               [w, base + ear_frame @ mid, base + ear_frame @ tip], .0007, whiskermat, res=4)
+    if B.get("tufts"):
+        # Lynx tips: a dark wisp standing up off each ear's point.
+        tip_z = .105 * EAR_H
+        for k in range(3):
+            dx = (k - 1) * .005
+            root = Vector((.012 + dx, -.004, tip_z - .012))
+            curve("Left ear furnishing" if side < 0 else "Right ear furnishing",
+                  [base + ear_frame @ root, base + ear_frame @ (root + Vector((.004, -.004, .03))),
+                   base + ear_frame @ (root + Vector((.01 + dx, -.008, .055)))], .0022, linemat, res=4)
 
 # ---------------------------------------------------------------- tails
 # The study's tail is thick with a round tip, curled forward beside her feet.
@@ -592,8 +671,8 @@ def game_tail(name, path, r0, r1):
 
 # A little thicker than revision 3; its fur is the longest on her, so in the
 # game it reads as a fluffy brush over the box.
-game_tail("Game tail", GAME_TAIL, .07, .066)
-game_tail("Game tail tip", GAME_TAIL_TIP, .066, .058)
+game_tail("Game tail", GAME_TAIL, .07 * TAIL_R, .066 * TAIL_R)
+game_tail("Game tail tip", GAME_TAIL_TIP, .066 * TAIL_R, .058 * TAIL_R)
 
 # ---------------------------------------------------------------- coat paint
 # One function paints every coat surface into attributes on the mesh, which
@@ -611,15 +690,102 @@ def mixc(a, b, t):
 
 
 BASE, LIGHT, DARK = hex_lin(COAT_BASE), hex_lin(COAT_LIGHT), hex_lin(COAT_DARK)
+STRIPE_C = hex_lin(STRIPE)
+
+
+def band(x, width=.5):
+    """A soft stripe from a sine: 1 in the stripe, 0 between, `width` of each period."""
+    return smoothstep(1 - 2 * width - .35, 1 - 2 * width + .35, math.sin(x))
+
+
+def spine_lines(p, n):
+    """Three dark lines from the crown down the back of the neck and the
+    spine, on the surfaces facing up and back."""
+    near = smoothstep(.11, .03, abs(p.x))
+    facing = smoothstep(-.4, .3, n.z - n.y)
+    return band(p.x * 85 + 1.6, .32) * near * facing
+
+
+def lum(c):
+    return .3 * c[0] + .59 * c[1] + .11 * c[2]
+
+
+def pattern_paint(c, p, n, kind):
+    """The breed's markings on top of the shaded coat color c."""
+    if PATTERN in ("classic", "mackerel"):
+        t = 0.0
+        if kind == "head":
+            # The M on the forehead: short upright lines between the eyes and ears.
+            fore = smoothstep(.76, .82, p.z) * smoothstep(-.02, .12, p.y) * smoothstep(.11, .05, abs(p.x))
+            t = max(t, band(p.x * 105 + 1.6, .32) * fore)
+            # Lines back over the crown, running on down the neck.
+            t = max(t, spine_lines(p, n) * smoothstep(.12, -.02, p.y))
+            # Two lines back across each cheek from the outer corner of the eye.
+            cheek = smoothstep(.1, .15, abs(p.x)) * smoothstep(.64, .68, p.z) * smoothstep(.8, .76, p.z) \
+                * smoothstep(.22, .08, p.y) * smoothstep(-.02, .08, p.y)
+            t = max(t, band((p.z + .25 * p.y) * 85, .3) * cheek)
+        elif kind == "leg":
+            t = band(p.z * 58, .4) * smoothstep(.08, .2, p.z) * smoothstep(.1, .25, -n.y + .3)
+        elif kind == "tail":
+            t = band((p - Vector((0, -.3, .1))).length * 48, .45)
+        else:
+            if PATTERN == "classic":
+                # A bullseye swirl on each flank, and three lines down the spine.
+                r = math.hypot(p.y + .1, p.z - .3)
+                t = band(r * 46 + 1, .4) * smoothstep(.4, .85, abs(n.x))
+                t = max(t, spine_lines(p, n))
+            else:
+                # Mackerel: thin stripes around the barrel, from a dark spine line.
+                t = band(p.y * 40 + p.z * 14 + 1.5 * math.sin(p.x * 18), .38) * smoothstep(-.1, .4, abs(n.x) + n.z * .5)
+                t = max(t, .9 * smoothstep(.07, .02, abs(p.x)) * smoothstep(.3, .7, n.z) * smoothstep(.2, -.3, n.y))
+            # Bars on the rear feet.
+            if p.z < .14:
+                t = max(t, band(p.y * 60, .35))
+        # Stripes fade out where the coat is pale (muzzle, bib, belly).
+        fade = .14 if kind == "head" else .06
+        t *= smoothstep(fade, fade - .08, lum(c) - lum(BASE)) * B.get("stripe_strength", .85)
+        return mixc(c, STRIPE_C, t)
+    if PATTERN == "tuxedo":
+        # Solid black first: her pale bib, belly, and eye rings would turn it gray.
+        c = mixc(BASE, DARK, .5 * smoothstep(.0, .8, -n.y))
+        w = 0.0
+        if kind == "head":
+            d = (p - MUZZLE).length
+            w = smoothstep(.12, .07, d) * smoothstep(.75, .71, p.z)
+            w = max(w, smoothstep(.67, .63, p.z) * smoothstep(-.1, .4, n.y))
+            # A narrow white blaze up the nose bridge.
+            w = max(w, smoothstep(.022, .012, abs(p.x)) * smoothstep(.76, .72, p.z) * smoothstep(.15, .3, p.y))
+        elif kind == "leg":
+            w = smoothstep(.17, .13, p.z)
+        elif kind == "body":
+            bib = smoothstep(-.1, .5, n.y) * smoothstep(.2, .08, abs(p.x)) * smoothstep(.62, .5, p.z)
+            belly = smoothstep(.0, .5, n.y) * smoothstep(.3, .15, p.z) * smoothstep(.25, .12, abs(p.x))
+            w = max(bib, belly, smoothstep(.12, .09, p.z) * smoothstep(-.05, .05, p.y))
+        return mixc(c, LIGHT, min(1, w) * .95)
+    if PATTERN == "points":
+        k = 0.0
+        if kind == "head":
+            d = (p - MUZZLE).length
+            # The mask covers the muzzle and reaches up around the eyes.
+            k = smoothstep(.27, .12, d) * .95
+        elif kind == "leg":
+            k = smoothstep(.42, .15, p.z) * .9
+        elif kind == "tail":
+            k = .9
+        elif kind == "body" and p.z < .12:
+            k = .85
+        return mixc(c, STRIPE_C, k)
+    return c
 COLLAR_CENTER = Vector((0, -.005, .62))
 COLLAR_UP = Matrix.Rotation(math.radians(-11), 3, "X") @ Vector((0, 0, 1))
-MUZZLE = Vector((0, .27, .675))
+MUZZLE = Vector((0, .27 + MZ, .675))
 CHEST = Vector((0, .16, .48))
 
 
-def coat_paint(p, n):
+def coat_paint(p, n, kind=None):
     """(color, fur length) for a point p with normal n, both in the kitten frame.
-    Fur length is a factor on the game's shell depth: 1 is the back of her coat."""
+    Fur length is a factor on the game's shell depth: 1 is the back of her coat.
+    kind ("head", "body", "leg", "tail", "ear", or None) places a breed's markings."""
     c = BASE
     fur = 1.0
     on_head = p.z > .6 and p.y > -.2
@@ -664,11 +830,28 @@ def coat_paint(p, n):
     collar = p - COLLAR_CENTER
     if abs(collar.dot(COLLAR_UP)) < .045 and abs(p.y) < .26:
         fur = min(fur, .3)
+    if PATTERN and kind not in ("ear", "tail"):
+        c = pattern_paint(c, p, n, kind)
     # A soft shade underneath, like light that doesn't reach.
     shade = 1 - .16 * smoothstep(.2, 1, -n.z)
     # A little low-frequency variation so it isn't one flat color.
     wobble = 1 + .035 * math.sin(p.x * 31 + p.z * 17) * math.sin(p.y * 23 - p.z * 11)
     return tuple(min(1, v * shade * wobble) for v in c), fur
+
+
+def part_kind(obj):
+    name = obj.name.lower()
+    if "tail" in name:
+        return "tail"
+    if name.endswith(" ear"):
+        return "ear"
+    if "foreleg" in name:
+        return "leg"
+    if "head" in name or "lid" in name:
+        return "head"
+    if "torso" in name:
+        return "body"
+    return None
 
 
 def paint(obj, tail_dark=False, ear=False):
@@ -678,16 +861,24 @@ def paint(obj, tail_dark=False, ear=False):
     m = obj.matrix_world
     nm = m.to_3x3().inverted().transposed()
     for i, v in enumerate(me.vertices):
-        c, f = coat_paint(m @ v.co, (nm @ v.normal).normalized())
+        kind = part_kind(obj)
+        c, f = coat_paint(m @ v.co, (nm @ v.normal).normalized(), kind)
         n = (nm @ v.normal).normalized()
         if tail_dark:
             c = mixc(c, DARK, .45)
             f = 1.3      # the fluffiest fur on her
+            if PATTERN:
+                c = pattern_paint(c, m @ v.co, n, "tail")
         if ear:
             # Short fur on the ears, so they keep their thin shape. Their
             # backs are the darkest part of a lilac's coat; the rim stays mid.
             f = .5
             c = mixc(c, DARK, .7 * smoothstep(.2, .8, -n.y))
+            if PATTERN == "points":
+                c = mixc(c, STRIPE_C, .9)
+            elif PATTERN == "tuxedo":
+                c = DARK
+        f *= FUR_SCALE
         col.data[i].color = (*c, 1)
         fur.data[i].value = f
 
@@ -714,8 +905,7 @@ def make_iris(path, size=512):
     def srgb_hex(h):
         return np.array([(h >> 16 & 255), (h >> 8 & 255), (h & 255)], np.float32) / 255
 
-    inner_c, mid_c, outer_c, ring_c = (srgb_hex(0xF8D664), srgb_hex(0xE4A838),
-                                       srgb_hex(0xB8701E), srgb_hex(0x3E2510))
+    inner_c, mid_c, outer_c, ring_c = (srgb_hex(h) for h in B.get("iris", (0xF8D664, 0xE4A838, 0xB8701E, 0x3E2510)))
     t1 = np.clip((r - .4) / .28, 0, 1)[..., None]
     t2 = np.clip((r - .62) / .26, 0, 1)[..., None]
     col = inner_c * (1 - t1) + mid_c * t1
@@ -732,7 +922,7 @@ def make_iris(path, size=512):
     col *= (1 - .35 * crypts)[..., None]
     # A bright, jagged collarette just outside the pupil.
     coll = np.exp(-((r - (.52 + .03 * np.sin(th * 13) + .015 * np.sin(th * 29))) / .05) ** 2)
-    col = col * (1 - .3 * coll[..., None]) + srgb_hex(0xFFE9A6) * .3 * coll[..., None]
+    col = col * (1 - .3 * coll[..., None]) + srgb_hex(B.get("collarette", 0xFFE9A6)) * .3 * coll[..., None]
     # The dark limbal ring at the edge, a touch wider.
     ring = np.clip((r - .82) / .18, 0, 1)[..., None] ** 1.3
     col = col * (1 - ring) + ring_c * ring
@@ -775,8 +965,12 @@ b.inputs["Coat IOR"].default_value = 1.38
 # Fine tapered fibers so the study renders like a plush kitten. The game never
 # sees these; it grows shell fur from "Fur length" instead.
 if FUR:
-    fur_mats = [material("Fur shade " + str(i), v, .84) for i, v in
-                enumerate((0x9C959B, 0xA59EA4, 0xB0A9AE, 0xBDB6BA))]
+    shades = (0x9C959B, 0xA59EA4, 0xB0A9AE, 0xBDB6BA)
+    if BREED != "lilac":
+        # A breed's coat has markings, so each strand takes the nearest of its colors.
+        shades = (COAT_DARK, COAT_BASE, COAT_LIGHT, STRIPE)
+    fur_mats = [material("Fur shade " + str(i), v, .84) for i, v in enumerate(shades)]
+    shade_lin = [hex_lin(h) for h in shades]
     verts, faces, idx = [], [], []
     for obj in coat_objects:
         if obj.hide_render:
@@ -796,6 +990,8 @@ if FUR:
             ns = [(nm @ me.vertices[i].normal).normalized() for i in tri.vertices]
             fl = sum(furlen.data[i].value for i in tri.vertices) / 3
             light = sum(col.data[i].color[0] for i in tri.vertices) / 3
+            avg = [sum(col.data[i].color[k] for i in tri.vertices) / 3 for k in range(3)]
+            nearest = min(range(len(shade_lin)), key=lambda j: sum((avg[k] - shade_lin[j][k]) ** 2 for k in range(3)))
             # Dense plush: more strands where the fur is long (ruff, bib,
             # cheeks, tail), so those read thick in the renders.
             count = int(count * (.7 + .5 * fl))
@@ -816,6 +1012,8 @@ if FUR:
                               p + along * length))
                 faces.extend(((i0, i0 + 1, i0 + 2), (i0 + 1, i0 + 3, i0 + 2)))
                 shade = min(3, max(0, int((light - BASE[0]) * 40 + 1.5 + rng.random() * 1.2)))
+                if BREED != "lilac":
+                    shade = nearest
                 idx.extend((shade, shade))
     mesh = bpy.data.meshes.new("Directional short fur mesh")
     mesh.from_pydata(verts, [], faces)
@@ -835,6 +1033,19 @@ sys.argv = ["blender", "--", str(OUT), "--nosave", "--norender"]
 exec(compile(collar_script.read_text(), str(collar_script), "exec"),
      {"__name__": "__main__", "__file__": str(collar_script)})
 sys.argv = saved_argv
+if "collar" in B:
+    material("kittenCollar", B["collar"], .6)
+    material("kittenCollarStitch", B["stitch"], .8)
+
+# The game's colors for this cat, read by export_kitten.py into the export so
+# scripts/build_kitten.swift colors each part to match. Her own colors are the
+# builder's defaults, so she has none.
+if BREED != "lilac":
+    import json
+    scene["catcart_palette"] = json.dumps({
+        "kittenEarInner": EAR_SKIN, "kittenNose": NOSE, "kittenMouth": LINE,
+        "kittenCrease": B.get("crease", 0x7A727A), "kittenCollar": B["collar"],
+        "kittenCollarStitch": B["stitch"]})
 
 # ---------------------------------------------------------------- studio
 floor_mat = material("Warm studio floor", 0xB2B0A6)
@@ -893,7 +1104,7 @@ scene.render.image_settings.file_format = "PNG"
 scene.camera = hero
 
 bpy.context.preferences.filepaths.save_version = 0
-blend = OUT / "kitten-cute-v4.blend"
+blend = OUT / ("kitten-cute-v4.blend" if BREED == "lilac" else "cat-" + BREED + ".blend")
 bpy.ops.wm.save_as_mainfile(filepath=str(blend))
 print("saved", blend)
 if RENDER:

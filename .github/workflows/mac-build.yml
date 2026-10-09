@@ -39,7 +39,7 @@ jobs:
       - name: Re-export models whose sources changed since they were built
         run: |
           src=$(git log -1 --format=%ct -- art/models scripts/blender/export_kitten.py scripts/blender/export_game_pickup.py scripts/build_kitten.swift scripts/build_game_pickup.swift)
-          built=$(git log -1 --format=%ct -- CatCart/Models/cat_kitten.scn CatCart/Models/coyote_run.scn CatCart/Models/wet_food.scn)
+          built=$(git log -1 --format=%ct -- CatCart/Models/cat_kitten.scn CatCart/Models/coyote_run.scn CatCart/Models/wet_food.scn 'CatCart/Models/cat_*.scn')
           echo "sources $src, built $built"
           if [ "$src" -gt "$built" ] || [ "$ART_ASKED" = "true" ]; then echo "ART=true" >> "$GITHUB_ENV"; else echo "ART=false" >> "$GITHUB_ENV"; fi
 
@@ -66,6 +66,12 @@ jobs:
           $RUN art/models/kitten/cat.blend scripts/blender/export_kitten.py -- "$WORK"
           swiftc -O scripts/build_kitten.swift -o "$WORK/build_kitten"
           "$WORK/build_kitten" "$WORK/kitten.json" CatCart/Models/cat_kitten.scn
+          # The other cats the player can pick (docs/plans/characters-and-carts.md).
+          for blend in art/models/cats/*.blend; do
+            breed=$(basename "$blend" .blend)
+            $RUN "$blend" scripts/blender/export_kitten.py -- "$WORK/$breed"
+            "$WORK/build_kitten" "$WORK/$breed/kitten.json" "CatCart/Models/cat_$breed.scn"
+          done
           swiftc -O scripts/build_game_pickup.swift -o "$WORK/build_game_pickup"
           $RUN art/models/coyote/coyote.blend scripts/blender/export_game_pickup.py -- coyote "$WORK/coyote.json"
           "$WORK/build_game_pickup" "$WORK/coyote.json" CatCart/Models/coyote_run.scn

@@ -198,9 +198,23 @@ final class Hud: SKScene {
 
     // MARK: - Home
 
+    /// What a tap on the home screen's picker asks for: the next (+1) or the
+    /// previous (-1) cat or cart.
+    enum HomePick {
+        case cat(Int)
+        case cart(Int)
+    }
+
+    /// The picker's two pills, cat on top, sitting above the play button.
+    private let pickWidth: CGFloat = 228
+    private let pickHeight: CGFloat = 44
+    private let catRowY: CGFloat = 150
+    private let cartRowY: CGFloat = 96
+
     /// The title screen: big name up top, the kitten in the middle (that's the 3D
-    /// scene), and a paw button with the best score at the bottom.
-    func showHome(best: Int) {
+    /// scene), the cat and cart pickers, and a paw button with the best score at
+    /// the bottom.
+    func showHome(best: Int, cat: CatChoice, cart: CartChoice) {
         panel.removeAllChildren()
         panel.isHidden = true
         dim.alpha = 0
@@ -255,6 +269,9 @@ final class Hud: SKScene {
         let play = pawButton("Tap to play")
         bottom.addChild(play)
         pulse(play)
+        bottom.addChild(pickRow(name: "catPick", caption: "CAT", y: catRowY))
+        bottom.addChild(pickRow(name: "cartPick", caption: "CART", y: cartRowY))
+        setPicks(cat: cat, cart: cart)
         if best > 0 {
             let chip = SKSpriteNode(imageNamed: "uiHud")
             chip.size = CGSize(width: 200, height: 46)
@@ -268,6 +285,69 @@ final class Hud: SKScene {
         bottom.alpha = 0
         bottom.run(.sequence([.wait(forDuration: 0.15), .fadeIn(withDuration: 0.3)]))
         layout(topSafe: topSafe)
+    }
+
+    /// One picker pill: a caption, the name in the middle, an arrow button at
+    /// each end. The name is filled in by setPicks.
+    private func pickRow(name: String, caption: String, y: CGFloat) -> SKNode {
+        let row = SKNode()
+        row.name = name
+        row.position = CGPoint(x: 0, y: y)
+        let back = SKShapeNode(rectOf: CGSize(width: pickWidth, height: pickHeight), cornerRadius: pickHeight / 2)
+        back.fillColor = navy.withAlphaComponent(0.66)
+        back.strokeColor = SKColor(white: 1, alpha: 0.35)
+        back.lineWidth = 1.5
+        row.addChild(back)
+        let tag = textSprite(caption, size: 10, weight: .heavy, color: icy)
+        tag.position = CGPoint(x: 0, y: 12)
+        row.addChild(tag)
+        for (dx, glyph) in [(-1, "‹"), (1, "›")] as [(CGFloat, String)] {
+            let button = SKShapeNode(circleOfRadius: pickHeight / 2 - 4)
+            button.fillColor = icy
+            button.strokeColor = navy
+            button.lineWidth = 2
+            button.position = CGPoint(x: dx * (pickWidth / 2 - pickHeight / 2), y: 0)
+            row.addChild(button)
+            let arrow = boldText(glyph, size: 28, fill: navy, outlineWidth: 0, drop: 0)
+            arrow.position = CGPoint(x: button.position.x + dx, y: 2)
+            row.addChild(arrow)
+        }
+        return row
+    }
+
+    /// Shows the picked cat and cart on the pills, with a little pop.
+    func setPicks(cat: CatChoice, cart: CartChoice) {
+        for (rowName, title) in [("catPick", cat.title), ("cartPick", cart.title)] {
+            guard let row = home.childNode(withName: "bottom")?.childNode(withName: rowName) else { continue }
+            let old = row.childNode(withName: "title") as? SKSpriteNode
+            if old?.userData?["text"] as? String == title { continue }
+            old?.removeFromParent()
+            let label = boldText(title, size: 20, fill: .white, outlineWidth: 2.5, drop: 2)
+            label.name = "title"
+            label.userData = ["text": title]
+            fit(label, maxWidth: pickWidth - pickHeight * 2 - 8)
+            label.position = CGPoint(x: 0, y: -5)
+            row.addChild(label)
+            if old != nil {
+                let s = label.xScale
+                label.setScale(s * 0.7)
+                label.run(.sequence([.scale(to: s * 1.1, duration: 0.1), .scale(to: s, duration: 0.08)]))
+            }
+        }
+    }
+
+    /// The picker under a tap, if any. `point` is in the game view's points
+    /// (y down); this scene is the same size with y up.
+    func homePick(at point: CGPoint) -> HomePick? {
+        guard !home.isHidden, let bottom = home.childNode(withName: "bottom") else { return nil }
+        let x = point.x - bottom.position.x
+        let y = size.height - point.y - bottom.position.y
+        // A little bigger than the pills, for a thumb.
+        guard abs(x) < pickWidth / 2 + 14 else { return nil }
+        let step = x < 0 ? -1 : 1
+        if abs(y - catRowY) < pickHeight / 2 + 5 { return .cat(step) }
+        if abs(y - cartRowY) < pickHeight / 2 + 5 { return .cart(step) }
+        return nil
     }
 
     func hideHome() {

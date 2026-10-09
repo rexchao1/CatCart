@@ -32,10 +32,17 @@ struct Group: Decodable {
     let comb: [Float]
     let indices: [UInt32]
 }
-struct Export: Decodable { let parts: [Part]; let groups: [Group]; let textures: [String: String] }
+struct Export: Decodable {
+    let parts: [Part]
+    let groups: [Group]
+    let textures: [String: String]
+    /// A breed's own colors by material name (make_kitten_v4.py --breed). Her
+    /// export has none, so she gets the colors written below.
+    let palette: [String: UInt32]?
+}
 
 let args = CommandLine.arguments
-precondition(args.count == 3, "usage: build_kitten kitten.json cat_kitten.scn")
+precondition(args.count == 3, "usage: build_kitten kitten.json cat_kitten.scn (or cat_BREED.scn)")
 let input = URL(fileURLWithPath: args[1])
 let export = try JSONDecoder().decode(Export.self, from: Data(contentsOf: input))
 
@@ -46,6 +53,11 @@ func picture(_ key: String) -> NSImage {
 }
 let iris = picture("iris")
 let grain = picture("grain")
+
+/// A material's color: the breed's if it has one, else hers.
+func look(_ name: String, _ hers: UInt32) -> NSColor {
+    nscolor(export.palette?[name] ?? hers)
+}
 
 func nscolor(_ h: UInt32) -> NSColor {
     NSColor(srgbRed: CGFloat((h >> 16) & 255) / 255, green: CGFloat((h >> 8) & 255) / 255,
@@ -127,15 +139,15 @@ func makeMaterial(_ name: String) -> SCNMaterial {
     m.lightingModel = .lambert
     switch name {
     case "kittenCoat": return coatMaterial(level: 0, name: name)
-    case "kittenEarInner": m.diffuse.contents = nscolor(0xD49FA9)
+    case "kittenEarInner": m.diffuse.contents = look(name, 0xD49FA9)
     case "kittenNose":
         // A wet little nose: lilac pink with a soft shine.
         m.lightingModel = .blinn
-        m.diffuse.contents = nscolor(0xC08A96)
+        m.diffuse.contents = look(name, 0xC08A96)
         m.specular.contents = NSColor(white: 0.45, alpha: 1)
         m.shininess = 0.5
-    case "kittenMouth": m.diffuse.contents = nscolor(0x5E4C55)
-    case "kittenCrease": m.diffuse.contents = nscolor(0x7A727A)
+    case "kittenMouth": m.diffuse.contents = look(name, 0x5E4C55)
+    case "kittenCrease": m.diffuse.contents = look(name, 0x7A727A)
     case "kittenWhisker": m.diffuse.contents = nscolor(0xF4F1EC)
     case "kittenEye":
         // The painted iris, glossy like a wet eye, and lit a little from
@@ -150,8 +162,8 @@ func makeMaterial(_ name: String) -> SCNMaterial {
     case "kittenShine":
         m.lightingModel = .constant
         m.diffuse.contents = NSColor.white
-    case "kittenCollar": m.diffuse.contents = nscolor(0xFF7A12)
-    case "kittenCollarStitch": m.diffuse.contents = nscolor(0xFFE6B8)
+    case "kittenCollar": m.diffuse.contents = look(name, 0xFF7A12)
+    case "kittenCollarStitch": m.diffuse.contents = look(name, 0xFFE6B8)
     case "kittenBell":
         m.lightingModel = .blinn
         m.diffuse.contents = nscolor(0xE8B63A)

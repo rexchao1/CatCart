@@ -24,9 +24,13 @@ Read `docs/plans/performance.md` before adding models, effects, or anything spaw
 
 Read `docs/plans/power-ups.md` before changing power-ups, where food spawns, or flying. It has the rules for the Fizz Rocket, Can Magnet, Pounce Springs, and Nine Lives.
 
+Read `docs/plans/characters-and-carts.md` before changing the cat or cart picker, adding a cat or a cart, or changing anything all the cats or carts share (her parts, the box size, the seat height).
+
 ## Kitten asset
 
 The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v4.py`. After changing her, run `scripts/build_kitten.sh`, then `swift scripts/check_game_art.swift`. Her fur is shell fur built into `cat_kitten.scn` by `scripts/build_kitten.swift`; `docs/plans/kitten-blender-study.md` explains it. Changing her size means rechecking the duck heights in `docs/plans/duck.md`.
+
+The other cats come from the same script with `--breed` (settings in `BREEDS` at its top). Their sources are `art/models/cats/BREED.blend`; `scripts/build_kitten.sh BREED` builds `CatCart/Models/cat_BREED.scn`. Changing the script's shared shape means rebuilding all of them.
 
 ## Food and coyote assets
 

@@ -1,13 +1,17 @@
 import SceneKit
 import UIKit
 
-// The player: Rex's kitten sitting in a La Croix 12-pack box on four wheels.
+// The player: Rex's kitten sitting in a La Croix 12-pack box on four wheels,
+// or whichever cat and cart were picked on the home screen (see Choices.swift).
 //
 // The box is built here from SceneKit boxes and cylinders, wrapped in the
-// textures from scripts/make_cart_textures.py. The kitten is a Blender model
-// (Models/cat_kitten.scn, from scripts/blender/make_kitten_v3.py through
-// scripts/build_kitten.sh) with separate head, ears, eyes, and tail nodes, so
-// we can make her twitch and blink in code. Her fur is built into the model.
+// textures from scripts/make_cart_textures.py. The other carts are built here
+// too, the same size as the box, so lanes and the duck work the same in each.
+// The kitten is a Blender model (Models/cat_kitten.scn, from
+// scripts/blender/make_kitten_v4.py through scripts/build_kitten.sh) with
+// separate head, ears, eyes, and tail nodes, so we can make her twitch and
+// blink in code. Her fur is built into the model. The other cats are built by
+// the same script with a breed, so they have the same parts.
 //
 // Her life comes from little springs (see `MotionSpring` below), not canned clips.
 // GameScene tells the cart what is happening each frame (`CartMotion`) and
@@ -96,6 +100,18 @@ final class KittenCart {
     private var seatY: Float { boxBottom + Float(boxHeight) - 0.42 }
 
     private var wheels: [SCNNode] = []
+    private(set) var cat: CatChoice
+    private(set) var cart: CartChoice
+    /// Each cart's pieces: the shell (walls, floor, cans) rides in the box, the
+    /// wheels hang off `body` so they don't dip with it. Built the first time a
+    /// cart is picked and kept, so flipping through carts doesn't rebuild them.
+    private var vehicles: [CartChoice: (shell: SCNNode, axles: SCNNode, spinners: [SCNNode], radius: Float)] = [:]
+    /// The radius of the wheels showing, so they turn with the road.
+    private var spinRadius: Float = 0.15
+    /// Each cat's model, loaded once. A clone shares its geometry and materials.
+    private static var catModels: [CatChoice: SCNNode] = [:]
+    /// The plain stand-in's pieces, if a model was missing.
+    private var standIn: [SCNNode] = []
     private var head: SCNNode?
     private var headRest = SCNVector3Zero
     private var kitten: SCNNode?
@@ -182,7 +198,9 @@ final class KittenCart {
     private let fizzNode = SCNNode()
     private var fizz: SCNParticleSystem?
 
-    init() {
+    init(cat: CatChoice = .lilac, cart: CartChoice = .lacroix) {
+        self.cat = cat
+        self.cart = cart
         body.scale = SCNVector3(Self.scale, Self.scale, Self.scale)
         node.addChildNode(body)
         // The box turns about its axles, not the ground, so a dip or a roll
@@ -192,11 +210,78 @@ final class KittenCart {
         box.pivot = SCNMatrix4MakeTranslation(0, wheelRadius, 0)
         box.position = SCNVector3(0, wheelRadius, 0)
         body.addChildNode(box)
-        buildBox()
-        buildWheels()
-        buildCans()
+        showVehicle(cart)
         loadKitten()
         buildPowerLooks()
+    }
+
+    // MARK: - Picking
+
+    /// Swaps the cart under her. Home screen only: the first build of a cart is
+    /// too slow for mid-run (docs/plans/performance.md).
+    func setCart(_ choice: CartChoice) {
+        guard choice != cart else { return }
+        if let old = vehicles[cart] {
+            old.shell.removeFromParentNode()
+            old.axles.removeFromParentNode()
+        }
+        cart = choice
+        showVehicle(choice)
+    }
+
+    /// Swaps the cat in the box. Home screen only, like setCart.
+    func setCat(_ choice: CatChoice) {
+        guard choice != cat else { return }
+        cat = choice
+        halo.removeFromParentNode()
+        kitten?.removeFromParentNode()
+        standIn.forEach { $0.removeFromParentNode() }
+        standIn = []
+        kitten = nil
+        kittenBody = nil
+        head = nil
+        tail = nil
+        tailTip = nil
+        ears = []
+        earRests = []
+        eyes = []
+        unsquashed = []
+        hasModel = false
+        loadKitten()
+        attachHalo()
+    }
+
+    private func showVehicle(_ choice: CartChoice) {
+        if vehicles[choice] == nil {
+            let shell = SCNNode()
+            let axles = SCNNode()
+            var spinners: [SCNNode] = []
+            var radius = wheelRadius
+            switch choice {
+            case .lacroix:
+                buildBox(into: shell)
+                spinners = buildWheels(into: axles)
+                buildCans(into: shell)
+            case .basket:
+                buildBasket(into: shell)
+                radius = 0.1
+                spinners = buildCasters(into: axles, radius: radius)
+            case .wagon:
+                buildWagon(into: shell)
+                radius = 0.16
+                spinners = buildWagonWheels(into: axles, radius: radius)
+            case .bed:
+                buildBed(into: shell)
+                radius = 0.08
+                spinners = buildBedWheels(into: axles, radius: radius)
+            }
+            vehicles[choice] = (shell, axles, spinners, radius)
+        }
+        let v = vehicles[choice]!
+        box.addChildNode(v.shell)
+        body.addChildNode(v.axles)
+        wheels = v.spinners
+        spinRadius = v.radius
     }
 
     // MARK: - Events
@@ -284,7 +369,7 @@ final class KittenCart {
         updateBoxMotion(dt: dt, m: m)
 
         if m.rolling && !m.crashed {
-            let spin = m.speed / wheelRadius * dt
+            let spin = m.speed / spinRadius * dt
             for w in wheels { w.eulerAngles.x -= spin }
         }
         updateBlink(dt: dt, idle: m.idle)
@@ -572,7 +657,7 @@ final class KittenCart {
         return m
     }
 
-    private func buildBox() {
+    private func buildBox(into box: SCNNode) {
         let side = material("cartSide", fallback: UIColor(red: 0.83, green: 0.93, blue: 0.98, alpha: 1))
         let end = material("cartEnd", fallback: UIColor(red: 0.83, green: 0.93, blue: 0.98, alpha: 1))
         let kraft = material("cartKraft", fallback: UIColor(red: 0.85, green: 0.75, blue: 0.59, alpha: 1))
@@ -622,7 +707,9 @@ final class KittenCart {
         box.addChildNode(floorNode)
     }
 
-    private func buildWheels() {
+    @discardableResult
+    private func buildWheels(into body: SCNNode) -> [SCNNode] {
+        var wheels: [SCNNode] = []
         let rubber = SCNMaterial()
         rubber.diffuse.contents = UIColor(white: 0.12, alpha: 1)
         rubber.lightingModel = .lambert
@@ -672,10 +759,11 @@ final class KittenCart {
             body.addChildNode(axle)
             wheels.append(spinner)
         }
+        return wheels
     }
 
     /// Cans in the four corners, like a real open 12-pack.
-    private func buildCans() {
+    private func buildCans(into box: SCNNode) {
         let wrap = material("canWrap", fallback: UIColor(red: 0.8, green: 0.92, blue: 0.98, alpha: 1))
         let lid = SCNMaterial()
         lid.diffuse.contents = UIColor(white: 0.82, alpha: 1)
@@ -694,15 +782,295 @@ final class KittenCart {
         }
     }
 
+    // MARK: - The other carts
+    //
+    // Each is the box's size: 1.3 m wide, 0.95 m long, its rim 0.77 m up (before
+    // the cart's 1.25 scale), with her seat at the same height. That keeps the
+    // lanes, the duck heights (docs/plans/duck.md), and every hit test the same.
+
+    private func plain(_ color: UIColor, shine: CGFloat = 0) -> SCNMaterial {
+        let m = SCNMaterial()
+        m.diffuse.contents = color
+        if shine > 0 {
+            m.lightingModel = .blinn
+            m.specular.contents = UIColor(white: shine, alpha: 1)
+            m.shininess = 0.6
+        } else {
+            m.lightingModel = .lambert
+        }
+        return m
+    }
+
+    /// A rounded rectangle, `width` across and `depth` long. With `wall`, only a
+    /// band that thick around the edge (a ring), like the walls of a tub.
+    private func roundedPath(width: CGFloat, depth: CGFloat, corner: CGFloat, wall: CGFloat? = nil) -> UIBezierPath {
+        let outer = UIBezierPath(roundedRect: CGRect(x: -width / 2, y: -depth / 2, width: width, height: depth),
+                                 cornerRadius: corner)
+        if let wall {
+            let inner = UIBezierPath(roundedRect: CGRect(x: -width / 2 + wall, y: -depth / 2 + wall,
+                                                         width: width - wall * 2, height: depth - wall * 2),
+                                     cornerRadius: max(0.005, corner - wall))
+            outer.append(inner.reversing())
+            outer.usesEvenOddFillRule = true
+        }
+        outer.flatness = 0.005
+        return outer
+    }
+
+    /// Stands a flat rounded shape up as a solid from `bottom` to `top`.
+    /// SCNShape extrudes along z, so it's tipped onto its back: the path's
+    /// y runs along the cart's length and the extrusion runs up.
+    @discardableResult
+    private func addSlab(_ path: UIBezierPath, bottom: Float, top: Float, chamfer: CGFloat = 0,
+                         materials: [SCNMaterial], into parent: SCNNode) -> SCNNode {
+        let shape = SCNShape(path: path, extrusionDepth: CGFloat(top - bottom))
+        shape.chamferRadius = chamfer
+        shape.materials = materials
+        let n = SCNNode(geometry: shape)
+        n.eulerAngles.x = -.pi / 2
+        n.position.y = (bottom + top) / 2
+        parent.addChildNode(n)
+        return n
+    }
+
+    private var rimTop: Float { boxBottom + Float(boxHeight) }
+
+    /// A plastic laundry basket: rounded corners, rows of slots in the walls, a
+    /// thick rolled rim with hand holes, on four swivel casters.
+    private func buildBasket(into box: SCNNode) {
+        let plastic = plain(UIColor(red: 0.62, green: 0.88, blue: 0.82, alpha: 1), shine: 0.35)
+        let slotColor = plain(UIColor(red: 0.27, green: 0.52, blue: 0.50, alpha: 1))
+        let w = boxWidth, d = boxDepth
+        let rimHeight: Float = 0.07
+        addSlab(roundedPath(width: w - 0.03, depth: d - 0.03, corner: 0.2, wall: 0.035),
+                bottom: boxBottom, top: rimTop - rimHeight + 0.01, materials: [plastic], into: box)
+        addSlab(roundedPath(width: w, depth: d, corner: 0.22, wall: 0.07),
+                bottom: rimTop - rimHeight, top: rimTop, chamfer: 0.025, materials: [plastic], into: box)
+        // Floor up to her seat, like the box.
+        addSlab(roundedPath(width: w - 0.08, depth: d - 0.08, corner: 0.17),
+                bottom: boxBottom, top: seatY, materials: [plastic], into: box)
+
+        // Slots: two rows along the long walls and the ends, dark so they read
+        // as holes from both cameras. Merged into one mesh.
+        let slots = SCNNode()
+        let long = SCNBox(width: 0.12, height: 0.045, length: 0.012, chamferRadius: 0.006)
+        long.materials = [slotColor]
+        let short = SCNBox(width: 0.012, height: 0.045, length: 0.12, chamferRadius: 0.006)
+        short.materials = [slotColor]
+        for row in 0..<2 {
+            let y = boxBottom + 0.13 + Float(row) * 0.12
+            for i in 0..<6 {
+                let x = (Float(i) - 2.5) * 0.16
+                for sz: Float in [-1, 1] {
+                    let n = SCNNode(geometry: long)
+                    n.position = SCNVector3(x, y, sz * (Float(d) / 2 - 0.012))
+                    slots.addChildNode(n)
+                }
+            }
+            for i in 0..<3 {
+                let z = (Float(i) - 1) * 0.17
+                for sx: Float in [-1, 1] {
+                    let n = SCNNode(geometry: short)
+                    n.position = SCNVector3(sx * (Float(w) / 2 - 0.012), y, z)
+                    slots.addChildNode(n)
+                }
+            }
+        }
+        // Hand holes in the rim at each end.
+        let hole = SCNBox(width: 0.02, height: 0.035, length: 0.2, chamferRadius: 0.012)
+        hole.materials = [slotColor]
+        for sx: Float in [-1, 1] {
+            let n = SCNNode(geometry: hole)
+            n.position = SCNVector3(sx * (Float(w) / 2 - 0.01), rimTop - 0.035, 0)
+            slots.addChildNode(n)
+        }
+        box.addChildNode(slots.flattenedClone())
+    }
+
+    /// Four swivel casters: a small gray wheel in a fork under each corner.
+    private func buildCasters(into body: SCNNode, radius: Float) -> [SCNNode] {
+        let rubber = plain(UIColor(white: 0.25, alpha: 1))
+        let metal = plain(UIColor(white: 0.82, alpha: 1), shine: 0.7)
+        let tire = SCNCylinder(radius: CGFloat(radius), height: 0.07)
+        tire.materials = [rubber]
+        let hub = SCNCylinder(radius: CGFloat(radius) * 0.45, height: 0.075)
+        hub.materials = [metal]
+        let mark = SCNBox(width: 0.076, height: CGFloat(radius) * 1.2, length: 0.03, chamferRadius: 0)
+        mark.materials = [metal]
+        let forkHeight = CGFloat(boxBottom - radius) + 0.03
+        let fork = SCNBox(width: 0.1, height: forkHeight, length: 0.05, chamferRadius: 0.01)
+        fork.materials = [metal]
+        let plate = SCNCylinder(radius: 0.06, height: 0.02)
+        plate.materials = [metal]
+        var spinners: [SCNNode] = []
+        for (sx, sz) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] as [(Float, Float)] {
+            let axle = SCNNode()
+            axle.position = SCNVector3(sx * 0.48, radius, sz * 0.3)
+            let f = SCNNode(geometry: fork)
+            f.position = SCNVector3(0, Float(forkHeight) / 2, -0.03)
+            axle.addChildNode(f)
+            let pl = SCNNode(geometry: plate)
+            pl.position = SCNVector3(0, boxBottom - radius + 0.01, -0.03)
+            axle.addChildNode(pl)
+            let spinner = SCNNode()
+            for g in [tire, hub, mark] as [SCNGeometry] {
+                let n = SCNNode(geometry: g)
+                n.eulerAngles.z = .pi / 2
+                spinner.addChildNode(n)
+            }
+            axle.addChildNode(spinner)
+            body.addChildNode(axle)
+            spinners.append(spinner)
+        }
+        return spinners
+    }
+
+    /// A red toy wagon: a shiny tub with a rolled rim and a white stripe, its
+    /// handle out the front.
+    private func buildWagon(into box: SCNNode) {
+        let red = plain(UIColor(red: 0.86, green: 0.13, blue: 0.14, alpha: 1), shine: 0.55)
+        let darkRed = plain(UIColor(red: 0.55, green: 0.07, blue: 0.08, alpha: 1))
+        let white = plain(UIColor(white: 0.97, alpha: 1), shine: 0.3)
+        let black = plain(UIColor(white: 0.13, alpha: 1), shine: 0.3)
+        let w = boxWidth, d = boxDepth
+        addSlab(roundedPath(width: w - 0.03, depth: d - 0.03, corner: 0.06, wall: 0.03),
+                bottom: boxBottom + 0.02, top: rimTop - 0.04, materials: [red], into: box)
+        // The rolled rim, thicker than the wall, with soft edges.
+        addSlab(roundedPath(width: w, depth: d, corner: 0.075, wall: 0.06),
+                bottom: rimTop - 0.06, top: rimTop, chamfer: 0.025, materials: [red], into: box)
+        // A white stripe around the sides.
+        addSlab(roundedPath(width: w - 0.02, depth: d - 0.02, corner: 0.065, wall: 0.01),
+                bottom: rimTop - 0.17, top: rimTop - 0.12, materials: [white], into: box)
+        addSlab(roundedPath(width: w - 0.06, depth: d - 0.06, corner: 0.04),
+                bottom: boxBottom + 0.02, top: seatY, materials: [darkRed], into: box)
+
+        // The handle: a tongue from under the front, angled down, with a loop grip.
+        let handle = SCNNode()
+        let tongue = SCNCylinder(radius: 0.022, height: 0.34)
+        tongue.materials = [black]
+        let t = SCNNode(geometry: tongue)
+        t.eulerAngles.x = .pi / 2 - 0.5
+        t.position = SCNVector3(0, -0.07, -0.15)
+        handle.addChildNode(t)
+        let grip = SCNTorus(ringRadius: 0.07, pipeRadius: 0.02)
+        grip.materials = [black]
+        let g = SCNNode(geometry: grip)
+        g.eulerAngles.x = .pi / 2 - 0.5
+        g.position = SCNVector3(0, -0.15, -0.33)
+        handle.addChildNode(g)
+        handle.position = SCNVector3(0, boxBottom + 0.08, -Float(d) / 2)
+        box.addChildNode(handle)
+    }
+
+    /// Big black tires with white walls and chrome hubs, on black axles.
+    private func buildWagonWheels(into body: SCNNode, radius: Float) -> [SCNNode] {
+        let rubber = plain(UIColor(white: 0.1, alpha: 1))
+        let white = plain(UIColor(white: 0.96, alpha: 1))
+        let chrome = plain(UIColor(white: 0.92, alpha: 1), shine: 1)
+        let tire = SCNTorus(ringRadius: CGFloat(radius) - 0.045, pipeRadius: 0.05)
+        tire.materials = [rubber]
+        let wall = SCNCylinder(radius: CGFloat(radius) - 0.035, height: 0.07)
+        wall.materials = [white]
+        let hub = SCNCylinder(radius: CGFloat(radius) * 0.35, height: 0.09)
+        hub.materials = [chrome]
+        let spoke = SCNBox(width: 0.075, height: CGFloat(radius) * 0.9, length: 0.03, chamferRadius: 0)
+        spoke.materials = [chrome]
+        let axleBar = SCNCylinder(radius: 0.02, height: CGFloat(boxWidth) - 0.1)
+        axleBar.materials = [rubber]
+        let x = Float(boxWidth) / 2 - 0.1
+        let z = Float(boxDepth) / 2 - 0.18
+        var spinners: [SCNNode] = []
+        for sz: Float in [-1, 1] {
+            let bar = SCNNode(geometry: axleBar)
+            bar.eulerAngles.z = .pi / 2
+            bar.position = SCNVector3(0, radius, sz * z)
+            body.addChildNode(bar)
+            for sx: Float in [-1, 1] {
+                let axle = SCNNode()
+                axle.position = SCNVector3(sx * x, radius, sz * z)
+                let spinner = SCNNode()
+                for g in [tire, wall, hub, spoke] as [SCNGeometry] {
+                    let n = SCNNode(geometry: g)
+                    n.eulerAngles.z = .pi / 2
+                    spinner.addChildNode(n)
+                }
+                axle.addChildNode(spinner)
+                body.addChildNode(axle)
+                spinners.append(spinner)
+            }
+        }
+        return spinners
+    }
+
+    /// A round plush donut bed: a puffy pink bolster with a cream top and
+    /// lining, a cream cushion to sit on, a stitched seam around its middle.
+    private func buildBed(into box: SCNNode) {
+        let pink = plain(UIColor(red: 0.96, green: 0.67, blue: 0.75, alpha: 1))
+        let cream = plain(UIColor(red: 0.99, green: 0.94, blue: 0.86, alpha: 1))
+        let seam = plain(UIColor(red: 0.82, green: 0.48, blue: 0.58, alpha: 1))
+        let w = boxWidth, d = boxDepth
+        let bolster: CGFloat = 0.14
+        // Base and cushion.
+        addSlab(roundedPath(width: w - 0.04, depth: d - 0.04, corner: 0.4),
+                bottom: boxBottom, top: boxBottom + 0.05, chamfer: 0.02, materials: [pink], into: box)
+        addSlab(roundedPath(width: w - bolster * 2 + 0.04, depth: d - bolster * 2 + 0.04, corner: 0.3),
+                bottom: boxBottom + 0.03, top: seatY + 0.01, chamfer: 0.03, materials: [cream], into: box)
+        // The bolster: cream on top (SCNShape's front cap and its chamfer), pink
+        // on the sides.
+        addSlab(roundedPath(width: w, depth: d, corner: 0.44, wall: bolster),
+                bottom: boxBottom + 0.03, top: rimTop, chamfer: 0.06,
+                materials: [cream, pink, pink, cream, pink], into: box)
+        // A cream lining just inside, so the inner face isn't pink.
+        addSlab(roundedPath(width: w - bolster * 2 + 0.012, depth: d - bolster * 2 + 0.012,
+                            corner: 0.44 - bolster, wall: 0.01),
+                bottom: seatY, top: rimTop - 0.06, materials: [cream], into: box)
+        addSlab(roundedPath(width: w + 0.012, depth: d + 0.012, corner: 0.446, wall: 0.012),
+                bottom: boxBottom + 0.27, top: boxBottom + 0.285, materials: [seam], into: box)
+    }
+
+    /// Little wooden wheels on short wooden legs, mostly hidden under the bed.
+    private func buildBedWheels(into body: SCNNode, radius: Float) -> [SCNNode] {
+        let wood = plain(UIColor(red: 0.72, green: 0.52, blue: 0.32, alpha: 1))
+        let pale = plain(UIColor(red: 0.90, green: 0.78, blue: 0.60, alpha: 1))
+        let wheel = SCNCylinder(radius: CGFloat(radius), height: 0.05)
+        wheel.materials = [wood, pale, pale]
+        let dot = SCNBox(width: 0.055, height: CGFloat(radius) * 1.1, length: 0.025, chamferRadius: 0)
+        dot.materials = [wood]
+        let legHeight = CGFloat(boxBottom - radius) + 0.06
+        let leg = SCNCylinder(radius: 0.035, height: legHeight)
+        leg.materials = [wood]
+        var spinners: [SCNNode] = []
+        for (sx, sz) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] as [(Float, Float)] {
+            let axle = SCNNode()
+            axle.position = SCNVector3(sx * 0.42, radius, sz * 0.26)
+            let l = SCNNode(geometry: leg)
+            l.position = SCNVector3(sx * -0.04, Float(legHeight) / 2, 0)
+            axle.addChildNode(l)
+            let spinner = SCNNode()
+            for g in [wheel, dot] as [SCNGeometry] {
+                let n = SCNNode(geometry: g)
+                n.eulerAngles.z = .pi / 2
+                spinner.addChildNode(n)
+            }
+            axle.addChildNode(spinner)
+            body.addChildNode(axle)
+            spinners.append(spinner)
+        }
+        return spinners
+    }
+
     // MARK: - Kitten
 
     private func loadKitten() {
-        guard let url = Bundle.main.url(forResource: "cat_kitten", withExtension: "scn"),
-              let scene = try? SCNScene(url: url, options: nil) else {
+        if Self.catModels[cat] == nil,
+           let url = Bundle.main.url(forResource: cat.modelName, withExtension: "scn"),
+           let scene = try? SCNScene(url: url, options: nil) {
+            Self.catModels[cat] = scene.rootNode.childNode(withName: "kitten", recursively: true) ?? scene.rootNode
+        }
+        guard let root = Self.catModels[cat] else {
             addStandIn()
             return
         }
-        let root = scene.rootNode.childNode(withName: "kitten", recursively: true) ?? scene.rootNode
         let kitten = root.clone()
         kitten.position = SCNVector3(0, seatY, 0)
         box.addChildNode(kitten)
@@ -743,6 +1111,7 @@ final class KittenCart {
         b.position = SCNVector3(0, seatY + 0.3, 0.05)
         b.scale = SCNVector3(1, 0.9, 0.9)
         box.addChildNode(b)
+        standIn.append(b)
         let skull = SCNSphere(radius: 0.3)
         skull.materials = [fur]
         let h = SCNNode(geometry: skull)
@@ -750,6 +1119,7 @@ final class KittenCart {
         h.position = SCNVector3(0, seatY + 0.78, -0.05)
         h.scale = SCNVector3(1.12, 0.95, 1)
         box.addChildNode(h)
+        standIn.append(h)
         head = h
         headRest = h.eulerAngles
     }
@@ -826,6 +1196,15 @@ final class KittenCart {
     }
 
     private var haloY: Float = 0
+
+    /// Puts the halo over whichever head is in the box now.
+    private func attachHalo() {
+        let headHolder = head ?? box
+        // The head's pivot is her neck; the top of her head is about 0.4 above it.
+        haloY = head != nil ? 0.5 : seatY + 1.15
+        halo.position = SCNVector3(0, haloY, head != nil ? -0.04 : 0)
+        headHolder.addChildNode(halo)
+    }
     private var magnetY: Float = 0
 
     private func glowMaterial(_ color: UIColor, glow: CGFloat = 0.6) -> SCNMaterial {
@@ -866,11 +1245,7 @@ final class KittenCart {
         halo.geometry = ringGeo
         halo.name = "glow"
         halo.isHidden = true
-        let headHolder = head ?? box
-        // The head's pivot is her neck; the top of her head is about 0.4 above it.
-        haloY = head != nil ? 0.5 : seatY + 1.15
-        halo.position = SCNVector3(0, haloY, head != nil ? -0.04 : 0)
-        headHolder.addChildNode(halo)
+        attachHalo()
 
         // Can Magnet: a red horseshoe magnet bobbing over her right shoulder.
         let red = glowMaterial(UIColor(red: 0.92, green: 0.16, blue: 0.2, alpha: 1), glow: 0.35)
