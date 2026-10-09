@@ -20,7 +20,7 @@ It should feel easy to pick up in an ad, then a real challenge once you are play
 
 ## Who it is for
 
-Mom, on an iPhone, in portrait, probably on the couch. Big readable objects. A short gentle start (about 8 seconds), then it gets hard for everyone, mom included; there is no easy mode (Rex's call, 2026-10-04). A crash should feel silly, not punishing. The cat is cute. The coyotes are mean on purpose, so the cute/danger contrast is the joke.
+Mom, on an iPhone, in portrait, probably on the couch. Big readable objects. A short start of easy mixes (about 8 seconds, already brisk at 24 m/s: Rex's call, 2026-10-09), then it gets hard for everyone, mom included; there is no easy mode (Rex's call, 2026-10-04). A crash should feel silly, not punishing. The cat is cute. The coyotes are mean on purpose, so the cute/danger contrast is the joke.
 
 Rex is learning while we build. Teaching comments in the Swift files stay. Do not turn this into an engine or a framework.
 
@@ -107,7 +107,7 @@ Behind the cat and above her, looking down the road like Subway Surfers, three l
 
 The cat never moves forward. The whole track (road, scenery, coyotes, food, trees) slides toward the camera at one speed. If a cobble and a coyote at the cat's feet leave the screen at different times, the motion is broken.
 
-Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 17 m/s at the start, rising to 34 at 75 s (Rex's call, 2026-10-05, was two and a half minutes). It climbs fast early and settles (about 20 at 8 s, 25 at 20 s, 28 at 30 s, 31 at 45 s), so it's hard by 30 s. After 75 s speed keeps creeping up 1 m/s every 30 s and stops at 38 (about 3:15), so long runs still get harder; the jump, clear height, and gaps stay where they are at 75 s. Things appear about 118 m ahead, inside the fog.
+Do not cap motion in screen pixels. Tune with `runSpeed()` in meters per second: 24 m/s at the start (Rex's call, 2026-10-09: "start a lot faster", was 17; `startSpeed` in `GameScene.swift`), rising to 34 at 75 s (Rex's call, 2026-10-05, was two and a half minutes). It climbs fast early and settles (about 26 at 8 s, 29 at 20 s, 30 at 30 s, 32 at 45 s), so it's hard by 30 s. After 75 s speed keeps creeping up 1 m/s every 30 s and stops at 38 (about 3:15), so long runs still get harder; the jump, clear height, and gaps stay where they are at 75 s. Things appear about 118 m ahead, inside the fog.
 
 The camera trails the cat: it follows her lane partway, rises with the floor she rides (road, roof, ramp) and with a little over half of each jump, rolls a touch on lane changes, and widens a little as the run speeds up. She never hides the road ahead: on the road she sits about two thirds down the screen, and at the top of any jump, from the road or off a tall tree, she stays under the crest where things come into view (Rex's call, 2026-10-05). Anything hanging over the road (bunting, branches, ceiling beams) stays above 9.8 m so the camera never passes through it.
 
@@ -155,7 +155,7 @@ Like Subway Surfers: easy to start, hard the longer you last, and endless. Rex's
 - Every mix has at least two or three obstacles; there are no food-only mixes.
 - The first 8 s are easy mixes only: two or three coyotes one move at a time, a tree with coyotes beside it, food over a coyote, two short trees side by side, a ramp onto a short tree, a gate of two trees with a coyote between. Medium mixes (two busy lanes, slaloms and snakes, coyote then tree, double hops, low things to duck, the first blocked lanes) join at 8 s, and so do tall trees and ramps: a ramp up a tall tree, a staircase up (short tree, then tall), a step down from a tall roof to a short one, twin trees of different lengths, a long pair with food zigzagging between the roofs, a pair that walks across the road, and a ramp beside a tall wall. Hard mixes (back-to-back coyotes, tree hops, a staircase of trees, jump then duck then jump, lanes that flip, both sides blocked, a blocked zigzag, a gate of blocked lanes with a tree to ride through, a blocked lane that walks across the road, the rare three-coyote and three-low-thing walls) join at 20 s, with the hardest tree mixes: a tree yard of three staggered trees to hop across, a wall of tall trees with a ramp up the middle, a gap jump, a pick-your-way-up row (staircase, wall, ramp), and two long trees with coyotes between them.
 - Cat trees are in about half of all mixes at any point in a run (Rex's call, 2026-10-05, was about 30%): each tier is about half tree mixes by weight. These two times are fixed in seconds (Rex's calls of 2026-10-05: medium was 15, hard was 40 and then 25). Easy mixes thin out by about 30 s but never vanish; they keep 15% of their weight.
-- Distances inside a mix grow with the square root of speed, so a faster run leaves less time between things: two coyotes in a lane are 1.1 s apart at the start, about 0.8 s at 34 m/s, and 0.75 s at 38.
+- Distances inside a mix grow with the square root of speed, so a faster run leaves less time between things: two coyotes in a lane are about 0.94 s apart at the start (24 m/s), about 0.8 s at 34 m/s, and 0.75 s at 38.
 - The gap between mixes is 0.9 s at the start and shrinks to 0.25 s at 75 s (0.45 s at 30 s), so mixes run into each other.
 - Fairness rule: there is always a way through, and time to steer to it. Some lanes cannot be survived by staying in them, so steering is required, not just easier. Two things in one lane are at least 19 m apart (written at 17 m/s), and a low thing after a coyote 24 m, inside a mix and where one mix meets the next. Low things never stand beside the middle of a tree or beside a ramp, where a rider stepping off would drop into one. The gap jump is the one exception to 19 m: two short trees in a lane with an 8 m gap and a coyote in it, cleared in one jump from the first roof (about 0.4 s to take off), with a neighbor tree to step around on. New mixes are checked against this by hand.
 - Cat trees stretch fully with speed, so a ride lasts about the same time; what comes after a tree moves back to match.
@@ -174,7 +174,7 @@ Jump over. If you are high enough, or already on a tree, they pass under. High e
 
 ### Food
 
-Touch to collect, even in the air or on a tree. Food hanging in the air sits at 2.0 m and needs a jump (above 1.23 m) or a tree roof to reach. Food on a roof or a ramp sits on the carpet. +1 food, +25 score, a pop. Food after a coyote in the same lane, or over one, is a reward for jumping, and food on the open side of a blocked lane rewards steering.
+Touch to collect, even in the air or on a tree. Food hanging in the air sits at 2.0 m and needs a jump (above 1.23 m) or a tree roof to reach. Food on a roof or a ramp sits on the carpet. +1 food, +25 score, and the can just disappears. Food after a coyote in the same lane, or over one, is a reward for jumping, and food on the open side of a blocked lane rewards steering.
 
 ### Power-ups
 
@@ -197,7 +197,7 @@ White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with scor
 
 ### Feedback that stays
 
-Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small widening of the view as she leaves the ground. On landing: a puff, a ring that spreads on the floor and slides back with the road, a squash, and a camera kick, all scaled by how hard she came down (a slam or a Pounce Springs landing also gives a short, small shake). Dust from the wheels, tinted to each world's ground. A grabbed can hops up, spins once, and shrinks into her lap with a few sparkles; power-ups do the same, with a colored puff and a strong haptic, and bubbles from the box while the rocket flies. Food cans bob, turn slowly, and glint now and then; power-up bubbles have a soap-bubble rim. The spray bottle squashes and stretches as it hops and goes "psst" at the top of each hop, with a long spray when it catches her. A crash puts four cartoon stars circling over her head. The food pill pulses when you grab food; the score pill pops once each thousand points. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
+Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small widening of the view as she leaves the ground. On landing: a puff, a ring that spreads on the floor and slides back with the road, a squash, and a camera kick, all scaled by how hard she came down (a slam or a Pounce Springs landing also gives a short, small shake). Dust from the wheels, tinted to each world's ground. A grabbed can just disappears, with a light haptic (Rex's call, 2026-10-09: no hop into her lap, no sparkles or puff). A grabbed power-up hops up, spins once, and shrinks into her lap, with a colored puff and a strong haptic, and bubbles from the box while the rocket flies. Food cans bob, turn slowly, and glint now and then; power-up bubbles have a soap-bubble rim. The spray bottle squashes and stretches as it hops and goes "psst" at the top of each hop, with a long spray when it catches her. A crash puts four cartoon stars circling over her head. The food pill pulses when you grab food; the score pill pops once each thousand points. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
 
 ---
 
@@ -255,11 +255,11 @@ This is the live game, not a wish list.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D cat furniture: paw-print carpet roof, sisal posts, condos with portholes and cat ears, hammocks, tunnels, scratch boards, swinging toys, an accent carpet per tree. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
-- Speed from 17 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
+- Speed from 24 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
-- Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, collect pop with sparkles, crash stars, trailing camera, speed lines.
+- Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, power-up collect pop, crash stars, trailing camera, speed lines.
 - Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 

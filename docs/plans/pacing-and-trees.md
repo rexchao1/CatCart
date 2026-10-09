@@ -214,3 +214,7 @@ Rex: "The trees have to look like real cat trees that also are creative and real
 - Whether 75 s is the right ramp length is a feel call. If 30 s is now too hard, 90 s is the next try.
 - Whether the creep past 75 s should stop at 38 m/s or keep going.
 - Whether the camera needs to rise less on a 3.5 m roof to keep the road in view. Answered in step 5: no, rising less made it worse; it rises the full height.
+
+## 2026-10-09: a faster start
+
+Rex: "start a lot faster". Runs now start at 24 m/s instead of 17 (`startSpeed` in `GameScene.swift`) and still reach 34 at 75 s on the same ramp, then creep to 38. Mix distances are still written for 17 m/s and stretch with the square root of speed, so two coyotes in a lane are 0.94 s apart at the start instead of 1.1 s, still well over the 0.68 s jump; nothing at full speed changed. The easy mixes still have the first 8 s to themselves. The camera's widening with speed now counts from the start speed, so the opening framing is the same as before. The road at the tap is filled from 48 m out instead of 40, so the first coyote still arrives about 2 s after the tap, about 1.1 s after the camera's swoop ends.
