@@ -533,6 +533,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var height: Float = 0
     private var vy: Float = 0
     private var wasAirborne = false
+    /// How fast she was falling just before this frame's gravity step, so a
+    /// landing knows how hard it hit (fall() zeroes vy when she touches down).
+    private var impactSpeed: Float = 0
     /// The cat tree she's riding (its roof, or its ramp), or nil on the road.
     private var platform: TrackItem?
     private var onPlatform: Bool { platform != nil }
@@ -1228,7 +1231,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             homeClock += dt
             moveTrack(dz: runSpeed() * 0.45 * dt)
             updateWorldBlend()
-            cart.update(dt: dt, speed: runSpeed() * 0.45, rolling: true, tilt: 0, idle: true)
+            var motion = CartMotion()
+            motion.speed = runSpeed() * 0.45
+            motion.idle = true
+            cart.update(dt: dt, motion: motion)
             updateCamera(dt: dt)
         case .dead:
             let wasPaused = deadClock < deathPause
@@ -1236,6 +1242,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             if wasPaused && deadClock >= deathPause {
                 hud.showRetry()
             }
+            // Tipped over: ears back, eyes shut, tail down, wheels still.
+            var motion = CartMotion()
+            motion.rolling = false
+            motion.crashed = true
+            cart.update(dt: dt, motion: motion)
             updateChase(dt: dt)
             updateCamera(dt: dt)
         }
@@ -1274,7 +1285,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         updateSteer(dt: dt)
         duckTimer = max(0, duckTimer - dt)
-        cart.update(dt: dt, speed: speed, rolling: height - floorY < 0.05, tilt: tilt, ducking: duckTimer > 0)
+        // Tell the cart what she's doing, so her ears, head, tail, and the box
+        // can answer it (see KittenCart). Events (jump, land, lane change) are
+        // sent where they happen.
+        var motion = CartMotion()
+        motion.speed = speed
+        motion.rolling = height - floorY < 0.05
+        motion.tilt = tilt
+        motion.steer = laneX(lane) - visualX
+        motion.ducking = duckTimer > 0
+        motion.airborne = jumping || height - floorY > 0.15
+        motion.verticalSpeed = vy
+        motion.flying = flying
+        cart.update(dt: dt, motion: motion)
         homeBlend = max(0, homeBlend - dt / 0.9)
         updateRide()
         updateChase(dt: dt)
@@ -1338,6 +1361,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             height += (flightHeight - height) * min(1, 3.5 * dt)
             vy = 0
         } else {
+            impactSpeed = max(0, -vy)
             fall(dt: dt)
         }
         settle(dt: dt)
@@ -1374,6 +1398,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             landSquash = 1
             puff(at: SCNVector3(visualX, floorY + 0.1, 0.2), count: 10, color: UIColor(white: 1, alpha: 0.9))
             haptic(.medium)
+            // A slam from the top (22 m/s) is a full hit; a step down is a soft one.
+            cart.didLand(impact: min(1, impactSpeed / 22))
         }
         wasAirborne = airborne
 
@@ -2894,6 +2920,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         guard stumbleGrace <= 0 else { return }
         testLog("stumble")
         stumbleGrace = 0.4
+        cart.didStumble()
         if bounceBack {
             lane = bodyLane
         }
@@ -3288,6 +3315,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         platform = beside
         lane = next
         tilt = delta > 0 ? -0.2 : 0.2
+        cart.didChangeLane(delta)
         DispatchQueue.main.async {
             UISelectionFeedbackGenerator().selectionChanged()
         }
@@ -3301,6 +3329,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         duckTimer = 0
         jumping = true
         vy = jumpSpeed
+        cart.didJump()
         haptic(.light)
         return true
     }

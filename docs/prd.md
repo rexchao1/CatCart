@@ -115,6 +115,8 @@ Three readable tracks at the cat. Tight at the horizon. The cart fits in one lan
 
 Swipe up to jump. The jump is a real arc: up to 2.6 m (4.4 m with Pounce Springs) and back down under gravity (Rex's call 2026-10-05, was 1.9 m: "I just want the animation higher"). How long she stays in the air is not locked; tune it freely (`jumpAirtime` in `GameScene.swift`, Rex's call 2026-10-03). Today it is 0.68 s at the start and quickens to about 0.59 s at full ramp (75 s) (Rex's call, 2026-10-05: stronger gravity, faster takeoff and a faster drop; was 0.9 to 0.78 s). The higher peak kept the same airtime, so she just leaves the ground faster and falls harder; every timing stayed the same. Keep the obstacle spacing longer than a jump plus a moment to react (see Getting harder). A swipe up just before she lands (under 0.2 s) is remembered and she jumps the moment she touches down. Swipe down mid-air to drop fast. Jumping onto a cat tree keeps the arc going, so she comes down on the roof at the end of it, not the instant she reaches the tree. If she catches the roof low, she hops up onto it. (Rex's call, 2026-09-30: the old 1.15 s held hang stayed in the air too long and snapped down onto trees.)
 
+She has a jump pose (Rex's call, 2026-10-08, asking for more realistic, cuter animation): she stretches tall and looks up as she rises, tucks and curls forward as she falls, ears back and tail streaming against the motion, and the box dips on its wheels when she lands. It is all springs driven by her vertical speed (`KittenCart.swift`), so a slam, a step down off a tree, and a full jump each look different. None of it changes the arc or the timings.
+
 Jumping is how you clear coyotes. Jumping onto a cat tree is how you ride.
 
 ### Duck
@@ -241,7 +243,9 @@ This is the live game, not a wish list.
 
 - SceneKit 3D world, portrait, iPhone 17 simulator scheme. SpriteKit HUD on top.
 - Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
-- 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, and gives slow blinks.
+- 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, glances off to a side with an ear turned that way, and gives slow blinks.
+- She moves like a cat, not a statue in a box (Rex's call, 2026-10-08: "a lot more realistic, more cute"). Everything is little damped springs in `KittenCart.swift`, driven by what the run is doing, not canned clips. Jump: the box rocks back on its wheels, she squeezes then stretches tall on the way up, ears pin back, head tips up to look ahead at the peak, tail lags down; falling, she tucks and curls forward and the tail streams up. Landing: the box dips on its suspension, she squashes, her head nods and bobs a beat late, ears flop, tail whips. Lane change: her head looks where she is going, she and the box lean in, the box yaws and settles, the tail counter-swings with the tip trailing like a whip. Riding: a faint road rattle, breathing, uneven tail sway, asymmetric ear flicks that sometimes answer each other. Duck: ears fold flat and pop back up with her. Fizz Rocket: ears blown back and fluttering, tail streaming out behind. Crash: ears back, eyes squeezed shut, tail down, on top of the tip-over. The duck heights in `docs/plans/duck.md` still hold: the stretch is off while she is ducked.
+- The cart has toy-wagon tires (fat rounded rubber, pale hub, chrome center cap) and the hand holes a real 12-pack has cut near the top of each end.
 - Four power-ups on the road: Fizz Rocket (fly through a food trail), Can Magnet, Pounce Springs (high jumps), Nine Lives (one saved crash), with a callout and timer badges.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
@@ -257,7 +261,6 @@ This is the live game, not a wish list.
 
 Known gaps against this PRD:
 
-- The kitten has no jump pose; she rides the arc sitting.
 - Coyotes gallop in step with each other.
 - No sound.
 
