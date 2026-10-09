@@ -99,8 +99,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private enum Intent {
         case tap, left, right, up, down
-        /// A finger lifted without swiping. On the death panel, this is what restarts.
-        case lift
+        /// A finger lifted without swiping, where it lifted (view points). On the
+        /// home screen this starts a run or works the picker; on the death panel
+        /// it restarts.
+        case lift(CGPoint)
         /// Test-only: a stumble from CATCART_SWIPES, to see the bottle without aiming for a bump.
         case stumble
         /// Test-only: a power-up from CATCART_SWIPES ("4:rocket"), as if she rolled into one.
@@ -680,6 +682,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var inputLock = NSLock()
     private var pending: [Intent] = []
     private var swipeStart: CGPoint?
+    /// Where the finger is now, so a lift knows where it happened.
+    private var swipeLast: CGPoint?
     private var swipeConsumed = false
 
     private let e2eAutoRun = ProcessInfo.processInfo.environment["CATCART_AUTO_RUN"] == "1"
@@ -775,7 +779,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         view.isMultipleTouchEnabled = false
         prepareForRun(in: view)
 
-        hud.showHome(best: bestScore)
+        hud.showHome(best: bestScore, cat: cart.cat, cart: cart.cart)
         if e2eAutoRun {
             startRun()
             homeBlend = 0
@@ -947,16 +951,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         catShadow.renderingOrder = 5
         playerRoot.addChildNode(catShadow)
 
-        // The kitten in her La Croix cart.
-        cart = KittenCart()
+        // The kitten in her La Croix cart, or the pair picked on the home screen.
+        // Test-only: CATCART_CAT=bean and CATCART_CART=wagon pick them for a
+        // screenshot without saving.
+        let env = ProcessInfo.processInfo.environment
+        cart = KittenCart(cat: env["CATCART_CAT"].flatMap(CatChoice.init) ?? Choices.cat,
+                          cart: env["CATCART_CART"].flatMap(CartChoice.init) ?? Choices.cart)
         catNode = cart.node
-        catNode.enumerateHierarchy { node, _ in
-            node.categoryBitMask |= Self.playerLightBit
-            // Her fur shells stay out of the shadow map: the skin under them
-            // already casts her shadow, and eight more copies would only cost.
-            node.castsShadow = node.name != "fur"
-        }
-        applyLook(to: catNode)
+        lookAfterPlayer()
         playerRoot.addChildNode(catNode)
 
         let aim = SCNNode()
@@ -992,6 +994,35 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         buildStars()
         placePlayer()
+    }
+
+    /// Lights, shadows, and the world's look (bend and fog) on everything in the
+    /// cart. Run again after the picker swaps the cat or the cart.
+    private func lookAfterPlayer() {
+        catNode.enumerateHierarchy { node, _ in
+            node.categoryBitMask |= Self.playerLightBit
+            // Her fur shells stay out of the shadow map: the skin under them
+            // already casts her shadow, and eight more copies would only cost.
+            node.castsShadow = node.name != "fur"
+        }
+        applyLook(to: catNode)
+    }
+
+    /// The home screen's picker: swap the cat or the cart, save it, and show it.
+    private func pick(_ choice: Hud.HomePick) {
+        switch choice {
+        case .cat(let step):
+            let next = cart.cat.cycled(step)
+            cart.setCat(next)
+            Choices.cat = next
+        case .cart(let step):
+            let next = cart.cart.cycled(step)
+            cart.setCart(next)
+            Choices.cart = next
+        }
+        lookAfterPlayer()
+        hud.setPicks(cat: cart.cat, cart: cart.cart)
+        DispatchQueue.main.async { UISelectionFeedbackGenerator().selectionChanged() }
     }
 
     /// The color of the dust her wheels kick up in each world.
@@ -4088,11 +4119,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     func touchBegan(at point: CGPoint) {
         swipeStart = point
+        swipeLast = point
         swipeConsumed = false
         enqueue(.tap)
     }
 
     func touchMoved(to point: CGPoint, minimum: CGFloat) {
+        swipeLast = point
         guard !swipeConsumed, let start = swipeStart else { return }
         let dx = point.x - start.x
         let dy = point.y - start.y
@@ -4108,7 +4141,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     func touchEnded() {
         if swipeStart != nil && !swipeConsumed {
-            enqueue(.lift)
+            enqueue(.lift(swipeLast ?? swipeStart!))
         }
         swipeStart = nil
     }
@@ -4133,8 +4166,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         for intent in intents {
             if state == .running { testLog("\(intent)") }
             switch (state, intent) {
-            case (.ready, .tap):
-                startRun()
+            case (.ready, .lift(let point)):
+                // A tap on the picker's pills changes the cat or the cart;
+                // anywhere else starts the run.
+                if let choice = hud.homePick(at: point) {
+                    pick(choice)
+                } else {
+                    startRun()
+                }
+            case (.ready, .left):
+                pick(.cat(-1))
+            case (.ready, .right):
+                pick(.cat(1))
             case (.dead, .tap):
                 // Only a touch that starts after the pause can restart, and only
                 // once it lifts without swiping.
