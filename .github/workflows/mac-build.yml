@@ -114,13 +114,13 @@ jobs:
           go city 1.5 1 1 2 3 -- "${RUNENV[@]}"
           for w in jungle house farm; do go "$w" 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_WORLD=$w; done
           # Frozen moments: a jump on the way up, at the top, a lane change, a duck.
-          go jumpup 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.12:freeze"
-          go jumptop 4.4 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.33:freeze"
-          go landing 4.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.72:freeze"
-          go lane 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:left,3.1:freeze"
-          go duck 4.2 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:down,3.15:freeze"
-          go bottle 5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:stumble,4:freeze"
-          go rocket 5.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="2:rocket,5:freeze"
+          go jumpup 5.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.12:freeze"
+          go jumptop 5.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.33:freeze"
+          go landing 5.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:up,3.72:freeze"
+          go lane 5.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:left,3.1:freeze"
+          go duck 5.6 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:down,3.15:freeze"
+          go bottle 6.5 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="3:stumble,4:freeze"
+          go rocket 7 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_SWIPES="2:rocket,5:freeze"
           go hard 3 3 -- "${RUNENV[@]}" SIMCTL_CHILD_CATCART_TIME=40
           go crash 6 -- SIMCTL_CHILD_CATCART_AUTO_RUN=1 SIMCTL_CHILD_CATCART_SWIPES="3:stumble,3.4:stumble"
           ls "$OUT"
