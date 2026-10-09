@@ -52,7 +52,7 @@ Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared
 
 Pots are gone. Do not bring them back unless Rex asks.
 
-Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city, a mossy log on two stumps in the jungle, a table with a red gingham cloth in the house, a clothesline with a blue sheet on the farm. Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Coyotes stay jump-only; there is no leaping coyote.
+Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city (steel frames with X braces, a walk board, a rail, a paint bucket, and amber lamps that blink), a mossy log on two stumps in the jungle (vines round the stumps, roots, mushrooms and a fern on top), a table with a red gingham cloth in the house (turned legs, a cloth that drapes all round with folds, two plates, a fish, a mug, a vase of flowers), a clothesline on the farm (a blue sheet and a yellow towel that sway on the line, a red sock, pegs, a bird on the post, grass at the feet). Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Only the posts at the lane edges reach below that edge; the rest of each one stays under 2.0 m, where a jump clears it. Coyotes stay jump-only; there is no leaping coyote.
 
 A blocked lane is a coyote prowling under a low thing (the coyote is 1.14 m tall, so it fits). Jump and you hit the low thing; duck and you hit the coyote. The only way past is to steer. This is the Subway Surfers wall, built from pieces the game already has (Rex's call, 2026-10-04).
 
@@ -193,7 +193,7 @@ White flash, shake, haptic, and the cat tips over in her box. "Oh no!" with scor
 
 ### Feedback that stays
 
-Lane-change haptic. Jump haptic. Collect puff. Landing puff and a small squash. Dust from the wheels. A colored puff and a strong haptic when she grabs a power-up, bubbles from the box while the rocket flies. The food pill pulses when you grab food. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
+Lane-change haptic and a scuff of dust off the wheels. Jump haptic and a small widening of the view as she leaves the ground. On landing: a puff, a ring that spreads on the floor and slides back with the road, a squash, and a camera kick, all scaled by how hard she came down (a slam or a Pounce Springs landing also gives a short, small shake). Dust from the wheels, tinted to each world's ground. A grabbed can hops up, spins once, and shrinks into her lap with a few sparkles; power-ups do the same, with a colored puff and a strong haptic, and bubbles from the box while the rocket flies. Food cans bob, turn slowly, and glint now and then; power-up bubbles have a soap-bubble rim. The spray bottle squashes and stretches as it hops and goes "psst" at the top of each hop, with a long spray when it catches her. A crash puts four cartoon stars circling over her head. The food pill pulses when you grab food; the score pill pops once each thousand points. Light speed lines at the screen edges. Every object has a soft shadow. Do not add score-pop spam or screen-wide particle storms. Mom's game, not an arcade cabinet.
 
 ---
 
@@ -255,7 +255,7 @@ This is the live game, not a wish list.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.
 - A score (meters plus 25 per can), shown during the run, on the death panel, and as the best.
 - Four worlds built from 3D kits, about 10 s each. You drive into the next one while sky, fog, and light blend.
-- Soft shadows, wheel dust, landing squash, trailing camera, speed lines.
+- Soft shadows, world-tinted wheel dust, landing squash and ring, camera kicks and shakes, collect pop with sparkles, crash stars, trailing camera, speed lines.
 - Home screen facing her, swoop into the run. HUD pills. Death panel with score, food, and time, a 1 s pause before "Dash again" shows, and a restart only on a fresh tap.
 - Art options sitting in `art/options` for Rex to prune.
 

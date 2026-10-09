@@ -411,6 +411,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     _output.color.rgb = mix(_output.color.rgb, fogColor * _output.color.a, f);
     """
 
+    // The power-up bubble's skin. `rim` is 0 where the surface faces the camera
+    // and 1 at its edge; the edge gets brighter and takes on a slow rainbow.
+    private static let bubbleModifier = """
+    #pragma body
+    float rim = 1.0 - saturate(dot(normalize(_surface.view), normalize(_surface.normal)));
+    float f = pow(rim, 2.5);
+    float3 rainbow = 0.5 + 0.5 * cos(6.2831 * (rim * 1.2 + scn_frame.time * 0.15) + float3(0.0, 2.1, 4.2));
+    _surface.diffuse.rgb = mix(_surface.diffuse.rgb, mix(float3(1.0), rainbow, 0.55), f);
+    _surface.transparent.a = saturate(_surface.transparent.a + f * 0.7);
+    """
+
     // MARK: - Scene objects
 
     private weak var view: GameSCNView?
@@ -522,6 +533,65 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private var puffs: [Puff] = []
     private var nextPuff = 0
+    /// Star-shaped emitters for grabbing a can or a power-up. Same idea as the puffs.
+    private var sparkles: [Puff] = []
+    private var nextSparkle = 0
+
+    /// A flat ring that spreads on the floor where she lands and slides back
+    /// with the road. Three are built up front and reused in turn.
+    private final class Ring {
+        let node: SCNNode
+        var left: Float = 0
+        var strength: Float = 1
+
+        init(node: SCNNode) {
+            self.node = node
+        }
+    }
+
+    private var rings: [Ring] = []
+    private var nextRing = 0
+    private let ringTime: Float = 0.38
+
+    /// A can or power-up she just grabbed. It hops, spins, and shrinks into her
+    /// lap for a moment before its node goes back to the pool (see flyAway).
+    private final class Collected {
+        let node: SCNNode
+        var left: Float
+
+        init(node: SCNNode, left: Float) {
+            self.node = node
+            self.left = left
+        }
+    }
+
+    private var collected: [Collected] = []
+    private let collectTime: Float = 0.26
+
+    /// Cartoon stars that circle over her head after a crash. Built with the
+    /// player, hidden until then.
+    private let starsNode = SCNNode()
+    private var starsAngle: Float = 0
+    private var starsClock: Float = 0
+
+    /// Camera feel: a short field-of-view kick on a jump or landing, and a
+    /// shake that dies out (a crash, a stumble, a hard landing).
+    private var fovKick: Float = 0
+    private var shakeLeft: Float = 0
+    private var shakeTotal: Float = 1
+    private var shakeAmp: Float = 0
+    private var shakeClock: Float = 0
+    /// How fast she was falling when she touched down, for the landing's weight.
+    private var landVy: Float = 0
+    private var landSquashAmp: Float = 0.12
+
+    /// Mist from the spray bottle's nozzle: little "psst"s as it hops, a long
+    /// one when it catches her.
+    private var mist: SCNParticleSystem?
+    private var mistLeft: Float = 0
+    private var lastHop: Float = 0
+    /// Which world the wheel dust is tinted for.
+    private var dustWorld: WorldKind?
 
     // MARK: - Game state
 
@@ -887,18 +957,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         // Dust kicked up by the wheels. Particles live in the world, not on the cart,
         // and drift toward the camera, so they trail behind her.
+        // Soft and a touch bigger than before, tinted to the ground of each world
+        // (see dustColor): gray grit in the city, warm straw dust on the farm.
         dust = SCNParticleSystem()
         dust.particleImage = puffImage
         dust.birthRate = 22
-        dust.particleLifeSpan = 0.45
+        dust.particleLifeSpan = 0.5
         dust.particleLifeSpanVariation = 0.15
-        dust.particleSize = 0.12
-        dust.particleSizeVariation = 0.05
-        dust.particleColor = UIColor(white: 1, alpha: 0.4)
-        dust.emittingDirection = SCNVector3(0, 0.35, 1)
-        dust.spreadingAngle = 25
-        dust.particleVelocity = 4.5
+        dust.particleSize = 0.15
+        dust.particleSizeVariation = 0.06
+        dust.particleColor = dustColor(.city)
+        dust.emittingDirection = SCNVector3(0, 0.4, 1)
+        dust.spreadingAngle = 28
+        dust.particleVelocity = 4.2
         dust.particleVelocityVariation = 1.5
+        dust.particleAngularVelocity = 60
+        dust.particleAngularVelocityVariation = 60
         dust.emitterShape = SCNBox(width: 1.1, height: 0.02, length: 0.1, chamferRadius: 0)
         dust.blendMode = .alpha
         dust.isLocal = false
@@ -907,7 +981,62 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         dustNode.addParticleSystem(dust)
         playerRoot.addChildNode(dustNode)
 
+        buildStars()
         placePlayer()
+    }
+
+    /// The color of the dust her wheels kick up in each world.
+    private func dustColor(_ world: WorldKind) -> UIColor {
+        switch world {
+        case .city: return UIColor(red: 0.84, green: 0.82, blue: 0.80, alpha: 0.42)
+        case .jungle: return UIColor(red: 0.76, green: 0.82, blue: 0.60, alpha: 0.40)
+        case .house: return UIColor(red: 0.98, green: 0.94, blue: 0.86, alpha: 0.34)
+        case .farm: return UIColor(red: 0.90, green: 0.80, blue: 0.62, alpha: 0.44)
+        }
+    }
+
+    /// Four cartoon stars that circle over her head after a crash: silly, not
+    /// punishing. Flat pictures facing the camera; updateStars spins the ring and
+    /// turns each star back so it keeps facing us.
+    private func buildStars() {
+        let m = SCNMaterial()
+        m.diffuse.contents = Self.drawStar(points: 5, color: UIColor(red: 1.0, green: 0.86, blue: 0.25, alpha: 1),
+                                           outline: UIColor(red: 0.85, green: 0.50, blue: 0.10, alpha: 1))
+        m.lightingModel = .constant
+        m.blendMode = .alpha
+        m.writesToDepthBuffer = false
+        m.isDoubleSided = true
+        Self.smoothSampling(m.diffuse)
+        for i in 0..<4 {
+            let plane = SCNPlane(width: 0.34, height: 0.34)
+            plane.materials = [m]
+            let star = SCNNode(geometry: plane)
+            let a = Float(i) * .pi / 2
+            star.position = SCNVector3(sin(a) * 0.5, 0, cos(a) * 0.5)
+            star.castsShadow = false
+            star.renderingOrder = 30
+            starsNode.addChildNode(star)
+        }
+        starsNode.isHidden = true
+        applyLook(to: starsNode)
+        playerRoot.addChildNode(starsNode)
+    }
+
+    /// Spins the crash stars and pops them in. Only runs while they show.
+    private func updateStars(dt: Float) {
+        guard !starsNode.isHidden else { return }
+        starsClock += dt
+        starsAngle += dt * 5
+        let pop = min(1, starsClock / 0.3)
+        let s = pop * (1 + 0.35 * sin(pop * .pi))
+        starsNode.scale = SCNVector3(s, s, s)
+        starsNode.eulerAngles.y = starsAngle
+        starsNode.position = SCNVector3(0, height + 1.55 + 0.05 * sin(starsClock * 3), 0.1)
+        for (i, star) in starsNode.childNodes.enumerated() {
+            star.eulerAngles.y = -starsAngle
+            let twinkle = 0.85 + 0.15 * sin(starsClock * 9 + Float(i) * 1.7)
+            star.scale = SCNVector3(twinkle, twinkle, twinkle)
+        }
     }
 
     private func placePlayer() {
@@ -1245,6 +1374,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         defer { frameLog.updateDone(since: updateStart) }
         handleInput()
         updatePuffs(dt: dt)
+        updateCollected(dt: dt)
 
         switch state {
         case .running:
@@ -1271,6 +1401,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             motion.crashed = true
             cart.update(dt: dt, motion: motion)
             updateChase(dt: dt)
+            updateRings(dt: dt, dz: 0)
+            updateStars(dt: dt)
             updateCamera(dt: dt)
         }
     }
@@ -1325,6 +1457,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         updateRide()
         updateChase(dt: dt)
         moveItems(dz: dz, dt: dt)
+        updateRings(dt: dt, dz: dz)
         resolveContacts(dz: dz)
         guard state == .running else { return }
         if e2eSwipes, platform.map(ObjectIdentifier.init) != loggedPlatform {
@@ -1337,6 +1470,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         dust.birthRate = height - floorY < 0.05 ? 22 : 0
         dustNode.position.y = floorY + 0.08
+        // The dust takes the color of the ground she's on, set only when it changes.
+        let world = currentPlayerWorld()
+        if world != dustWorld {
+            dustWorld = world
+            dust.particleColor = dustColor(world)
+        }
 
         lineClock -= dt
         if lineClock <= 0 {
@@ -1361,9 +1500,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         runCameraX += (goalX - runCameraX) * min(1, 9 * dt)
         cameraNode.position = SCNVector3(runCameraX, cameraLift + cameraHeight, cameraBack)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, -tilt * 0.08)
-        // A slightly wider view as the run speeds up.
+        // A shake that dies out: a crash, a stumble, or a hard landing. It's an
+        // offset on top of the position above, so it never drifts the camera.
+        shakeClock += dt
+        if shakeLeft > 0 {
+            shakeLeft = max(0, shakeLeft - dt)
+            let k = shakeAmp * (shakeLeft / max(0.01, shakeTotal))
+            cameraNode.position.x += sin(shakeClock * 72) * k
+            cameraNode.position.y += sin(shakeClock * 51 + 1) * k * 0.7
+            cameraNode.eulerAngles.z += sin(shakeClock * 60) * k * 0.15
+        }
+        // A slightly wider view as the run speeds up, plus a short kick on a jump
+        // or a landing that fades in about a quarter second.
+        fovKick *= max(0, 1 - 7 * dt)
+        if fovKick < 0.02 { fovKick = 0 }
         let boost = CGFloat(max(0, runSpeed() - 17) * 0.35)
-        cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0)
+        cameraNode.camera?.fieldOfView = baseFOV + (state == .running ? boost : 0) + CGFloat(fovKick)
 
         // Home screen, or the swoop from it: mix toward the front view of her face.
         // The home view already holds the sky where it looks right, so the sky's
@@ -1395,6 +1547,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         vy -= gravity * dt
         height += vy * dt
         if height < floorY {
+            // Remembered for the landing's weight (squash, ring, camera kick).
+            if vy <= 0 { landVy = vy }
             // Rolling up a ramp, the slope rises under her by up to 0.25 m a frame
             // (a tall ramp climbs 3.5 m in half a second), so she's carried up
             // with it. Coming down from a jump, only a near miss snaps.
@@ -1418,9 +1572,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func settle(dt: Float) {
         let airborne = height - floorY > 0.15
         if wasAirborne && !airborne && vy <= 0 {
+            // How hard she came down: about 0.3 for a plain jump, 0.75 for a slam
+            // or a Pounce Springs jump, 1 for the rocket. Everything scales with it.
+            let impact = min(1, max(0, (-landVy - 10) / 16))
             landSquash = 1
-            puff(at: SCNVector3(visualX, floorY + 0.1, 0.2), count: 10, color: UIColor(white: 1, alpha: 0.9))
-            haptic(.medium)
+            landSquashAmp = 0.09 + 0.09 * impact
+            puff(at: SCNVector3(visualX, floorY + 0.1, 0.2), count: 8 + Int(impact * 8), color: UIColor(white: 1, alpha: 0.9))
+            landingRing(at: SCNVector3(visualX, floorY + 0.05, 0.3), strength: impact)
+            fovKick = 1.5 + 2.5 * impact
+            if impact > 0.5 {
+                shakeCamera(amp: 0.04 + 0.08 * impact, time: 0.18)
+            }
+            haptic(impact > 0.6 ? .heavy : .medium)
+            landVy = 0
             // A slam from the top (22 m/s) is a full hit; a step down is a soft one.
             cart.didLand(impact: min(1, impactSpeed / 22))
         }
@@ -1428,8 +1592,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         // Squash on landing, stretch in the air. Small, so she still reads as sitting.
         landSquash = max(0, landSquash - dt * 5)
+        if landSquash == 0 { landSquashAmp = 0.12 }
         let air = min(1, max(0, height - floorY) / jumpPeak)
-        let squash = sin(landSquash * .pi) * 0.12
+        let squash = sin(landSquash * .pi) * landSquashAmp
         catNode.scale = SCNVector3(1 + squash - air * 0.03, 1 - squash + air * 0.05, 1)
 
         // Road bumps while rolling.
@@ -2097,9 +2262,32 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         if let pickup {
             pickup.position.y += 0.3
-            pickup.runAction(.repeatForever(.sequence([
-                .group([.moveBy(x: 0, y: 0.14, z: 0, duration: 0.45), .rotateBy(x: 0, y: 0, z: 0.08, duration: 0.45)]),
-                .group([.moveBy(x: 0, y: -0.14, z: 0, duration: 0.45), .rotateBy(x: 0, y: 0, z: -0.08, duration: 0.45)])
+            // A soft bob, each can on its own beat so a line of them ripples.
+            let rise = SCNAction.moveBy(x: 0, y: 0.14, z: 0, duration: 0.5)
+            rise.timingMode = .easeInEaseOut
+            let sink = SCNAction.moveBy(x: 0, y: -0.14, z: 0, duration: 0.5)
+            sink.timingMode = .easeInEaseOut
+            pickup.runAction(.sequence([
+                .wait(duration: 0, withRange: 1.0),
+                .repeatForever(.sequence([rise, sink]))
+            ]))
+            if foodModel != nil {
+                // The real can turns slowly so the label and the salmon both show.
+                pickup.runAction(.repeatForever(.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 3.2)))
+            }
+            // A glint that winks on the can's shoulder now and then. It hangs off
+            // the still node, not the turning can, so it always faces the camera.
+            let glint = SCNNode(geometry: SCNPlane(width: 0.26, height: 0.26))
+            glint.geometry?.materials = [glintMaterial]
+            glint.position = SCNVector3(-0.2, 0.68, 0.3)
+            glint.scale = SCNVector3(0.01, 0.01, 0.01)
+            glint.castsShadow = false
+            glint.renderingOrder = 25
+            node.addChildNode(glint)
+            glint.runAction(.repeatForever(.sequence([
+                .wait(duration: 1.4, withRange: 1.6),
+                .group([.scale(to: 1, duration: 0.16), .rotateBy(x: 0, y: 0, z: 0.5, duration: 0.4)]),
+                .scale(to: 0.01, duration: 0.24)
             ])))
         }
         // Real meshes need the same road bend and fog as every other object.
@@ -2109,6 +2297,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         node.addChildNode(shadow)
         return node
     }
+
+    /// The white four-point star that glints on cans, shared by every can.
+    private lazy var glintMaterial: SCNMaterial = {
+        let m = SCNMaterial()
+        m.diffuse.contents = Self.drawStar(points: 4, color: UIColor(white: 1, alpha: 1), outline: nil)
+        m.lightingModel = .constant
+        m.blendMode = .alpha
+        m.writesToDepthBuffer = false
+        m.isDoubleSided = true
+        Self.smoothSampling(m.diffuse)
+        return m
+    }()
 
     private func shadowNode(width: CGFloat, length: CGFloat) -> SCNNode {
         let node = SCNNode(geometry: groundPlane(width: width, length: length, material: shadowMaterial))
@@ -2395,48 +2595,104 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     /// Something low across one lane, front edge at z = 0. Its underside is at
     /// lowClearance with nothing under it down to the road, so the gap reads as
-    /// "go under". Pieces are merged into one mesh, like the cat tree.
+    /// "go under". Pieces are merged into one mesh, like the cat tree; the few
+    /// that move (blinking lamps, a swinging sheet) stay as their own nodes.
+    /// Nothing but the posts at lowPostX reaches below lowClearance.
     private func makeLowThing(_ world: WorldKind) -> SCNNode {
         let root = SCNNode()
         let parts = SCNNode()
         let u = lowClearance
         let px = lowPostX
+        /// A node that keeps its own shape (a sphere or cone) and goes into the merge.
+        func piece(_ geometry: SCNGeometry, _ m: SCNMaterial, at p: SCNVector3, scale: SCNVector3 = SCNVector3(1, 1, 1)) -> SCNNode {
+            geometry.materials = [m]
+            let n = SCNNode(geometry: geometry)
+            n.position = p
+            n.scale = scale
+            parts.addChildNode(n)
+            return n
+        }
         switch world {
         case .city:
-            // Construction scaffold: steel poles on feet, a striped plank across.
+            // Construction scaffold: two steel frames on feet with X braces, a
+            // striped board across the front, a wooden walk board on top, a rail
+            // behind, a paint bucket, and amber lamps that blink.
             let steel = flatMaterial("steel", UIColor(white: 0.62, alpha: 1))
             let stripes = flatMaterial("stripes", .orange, image: Self.drawStripes()) {
                 $0.diffuse.contentsTransform = SCNMatrix4MakeScale(2.5, 1, 1)
                 $0.diffuse.wrapS = .repeat
             }
+            let plank = flatMaterial("plank", UIColor(red: 0.80, green: 0.64, blue: 0.40, alpha: 1))
+            let bucket = flatMaterial("bucket", UIColor(red: 0.55, green: 0.60, blue: 0.68, alpha: 1))
             let top: Float = u + 0.32
             for x in [-px, px] {
-                parts.addChildNode(box(0.1, top + 0.08, 0.1, steel, at: SCNVector3(x, (top + 0.08) / 2, -0.3)))
-                parts.addChildNode(box(0.34, 0.06, 0.5, steel, at: SCNVector3(x, 0.03, -0.3)))
+                // Front pole to the walk board, back pole up to the rail.
+                parts.addChildNode(box(0.09, top + 0.08, 0.09, steel, at: SCNVector3(x, (top + 0.08) / 2, -0.12)))
+                parts.addChildNode(box(0.09, top + 0.28, 0.09, steel, at: SCNVector3(x, (top + 0.28) / 2, -0.72)))
+                parts.addChildNode(box(0.34, 0.06, 0.95, steel, at: SCNVector3(x, 0.03, -0.42)))
+                parts.addChildNode(box(0.07, 0.07, 0.7, steel, at: SCNVector3(x, top + 0.06, -0.42)))
+                for s in [1, -1] as [Float] {
+                    let brace = box(0.05, 0.05, 0.85, steel, at: SCNVector3(x, u - 0.25, -0.42))
+                    brace.eulerAngles.x = s * 0.6
+                    parts.addChildNode(brace)
+                }
             }
-            parts.addChildNode(box(2 * px + 0.2, 0.3, 0.16, stripes, at: SCNVector3(0, u + 0.15, -0.15)))
-            // A second rail behind, so it looks built, not balanced.
-            parts.addChildNode(box(2 * px, 0.08, 0.08, steel, at: SCNVector3(0, top, -0.5)))
+            parts.addChildNode(box(2 * px + 0.2, 0.3, 0.16, stripes, at: SCNVector3(0, u + 0.15, -0.12)))
+            parts.addChildNode(box(2 * px + 0.1, 0.06, 0.62, plank, at: SCNVector3(0, top + 0.03, -0.42)))
+            parts.addChildNode(box(2 * px, 0.06, 0.06, steel, at: SCNVector3(0, top + 0.22, -0.72)))
+            _ = piece(SCNCylinder(radius: 0.1, height: 0.16), bucket, at: SCNVector3(0.5, top + 0.14, -0.5))
+            _ = piece(SCNCylinder(radius: 0.085, height: 0.02), flatMaterial("paint", UIColor(red: 0.95, green: 0.45, blue: 0.2, alpha: 1)),
+                      at: SCNVector3(0.5, top + 0.225, -0.5))
+            // Lamps on the front poles, kept out of the merge so they can blink.
             let amber = flatMaterial("amber", UIColor(red: 1.0, green: 0.62, blue: 0.1, alpha: 1)) {
                 $0.emission.contents = UIColor(red: 0.9, green: 0.45, blue: 0.0, alpha: 1)
             }
-            let lamp = SCNSphere(radius: 0.08)
-            lamp.materials = [amber]
-            let lampNode = SCNNode(geometry: lamp)
-            lampNode.position = SCNVector3(px, top + 0.16, -0.3)
-            parts.addChildNode(lampNode)
+            let lamps = SCNNode()
+            for x in [-px, px] {
+                let lamp = SCNSphere(radius: 0.075)
+                lamp.segmentCount = 12
+                lamp.materials = [amber]
+                let lampNode = SCNNode(geometry: lamp)
+                lampNode.position = SCNVector3(x, top + 0.17, -0.12)
+                lamps.addChildNode(lampNode)
+            }
+            applyLook(to: lamps)
+            let blink = lamps.flattenedClone()
+            blink.castsShadow = false
+            let dimDown = SCNAction.fadeOpacity(to: 0.3, duration: 0.45)
+            dimDown.timingMode = .easeInEaseOut
+            let brighten = SCNAction.fadeOpacity(to: 1, duration: 0.45)
+            brighten.timingMode = .easeInEaseOut
+            blink.runAction(.repeatForever(.sequence([dimDown, brighten])))
+            root.addChildNode(blink)
 
         case .jungle:
-            // A mossy log lying across two tall stumps.
+            // A mossy log lying across two stumps, with vines winding round the
+            // stumps, roots at their feet, mushrooms and a little fern on top.
             let bark = flatMaterial("bark", UIColor(red: 0.42, green: 0.27, blue: 0.16, alpha: 1))
             let ring = flatMaterial("ring", UIColor(red: 0.85, green: 0.68, blue: 0.45, alpha: 1))
             let moss = flatMaterial("moss", UIColor(red: 0.38, green: 0.62, blue: 0.22, alpha: 1))
+            let vine = flatMaterial("vine", UIColor(red: 0.26, green: 0.50, blue: 0.18, alpha: 1))
+            let leaf = flatMaterial("leaf", UIColor(red: 0.32, green: 0.60, blue: 0.26, alpha: 1))
+            let cap = flatMaterial("mushroomCap", UIColor(red: 0.86, green: 0.30, blue: 0.22, alpha: 1))
+            let stem = flatMaterial("mushroomStem", UIColor(red: 0.96, green: 0.92, blue: 0.80, alpha: 1))
             for x in [-px, px] {
                 let stump = SCNCone(topRadius: 0.16, bottomRadius: 0.24, height: CGFloat(u))
                 stump.materials = [bark, ring, bark]
                 let n = SCNNode(geometry: stump)
                 n.position = SCNVector3(x, u / 2, -0.4)
                 parts.addChildNode(n)
+                // Roots spread out from the foot, away from the lane's middle.
+                let out: Float = x > 0 ? 1 : -1
+                _ = piece(SCNSphere(radius: 0.1), bark, at: SCNVector3(x + out * 0.2, 0.04, -0.4), scale: SCNVector3(1.6, 0.5, 0.8))
+                _ = piece(SCNSphere(radius: 0.1), bark, at: SCNVector3(x, 0.04, -0.4 + 0.22), scale: SCNVector3(0.8, 0.5, 1.5))
+                _ = piece(SCNSphere(radius: 0.1), bark, at: SCNVector3(x, 0.04, -0.4 - 0.22), scale: SCNVector3(0.8, 0.5, 1.5))
+                // A vine winding up the stump: three slanted loops.
+                for (i, y) in ([0.35, 0.7, 1.05] as [Float]).enumerated() {
+                    let radius = 0.24 - 0.08 * y / u
+                    let loop = piece(SCNTorus(ringRadius: CGFloat(radius + 0.01), pipeRadius: 0.02), vine, at: SCNVector3(x, y, -0.4))
+                    loop.eulerAngles = SCNVector3(0.22, Float(i) * 1.3, 0)
+                }
             }
             let r: Float = 0.22
             let log = SCNCylinder(radius: CGFloat(r), height: CGFloat(2 * px + 0.5))
@@ -2445,64 +2701,140 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             logNode.eulerAngles.z = .pi / 2
             logNode.position = SCNVector3(0, u + r, -0.4)
             parts.addChildNode(logNode)
+            // Moss along the top and a few patches down the front.
             for (x, sx) in [(-0.6, 0.32), (0.05, 0.42), (0.7, 0.3)] as [(Float, Float)] {
                 let blob = SCNSphere(radius: 1)
                 blob.segmentCount = 10
-                blob.materials = [moss]
-                let n = SCNNode(geometry: blob)
-                n.scale = SCNVector3(sx, 0.09, 0.2)
-                n.position = SCNVector3(x, u + 2 * r - 0.02, -0.4)
-                parts.addChildNode(n)
+                _ = piece(blob, moss, at: SCNVector3(x, u + 2 * r - 0.02, -0.4), scale: SCNVector3(sx, 0.09, 0.2))
+            }
+            for x in [-0.45, 0.35] as [Float] {
+                let patch = SCNSphere(radius: 1)
+                patch.segmentCount = 10
+                _ = piece(patch, moss, at: SCNVector3(x, u + r + 0.08, -0.4 + r - 0.02), scale: SCNVector3(0.16, 0.1, 0.05))
+            }
+            // Mushrooms: a stem and a flattened cap, two small and one bigger.
+            for (x, s) in [(-0.38, 0.8), (-0.27, 0.6), (0.48, 1.0)] as [(Float, Float)] {
+                let y = u + 2 * r
+                _ = piece(SCNCylinder(radius: CGFloat(0.025 * s), height: CGFloat(0.09 * s)), stem, at: SCNVector3(x, y + 0.045 * s, -0.36))
+                _ = piece(SCNSphere(radius: CGFloat(0.065 * s)), cap, at: SCNVector3(x, y + 0.09 * s, -0.36), scale: SCNVector3(1, 0.55, 1))
+            }
+            // A fern: five leaves fanned out from one spot, each tilting up and out.
+            for i in 0..<5 {
+                let holder = SCNNode()
+                holder.position = SCNVector3(0.15, u + 2 * r + 0.02, -0.4)
+                holder.eulerAngles.y = Float(i) * 1.26
+                let blade = SCNNode(geometry: SCNSphere(radius: 1))
+                blade.geometry?.materials = [leaf]
+                blade.scale = SCNVector3(0.045, 0.012, 0.15)
+                blade.position = SCNVector3(0, 0.03, 0.12)
+                blade.eulerAngles.x = -0.55
+                holder.addChildNode(blade)
+                parts.addChildNode(holder)
             }
 
         case .house:
-            // A wooden table with a gingham cloth. The cloth's hem is the low edge.
+            // A wooden table with turned legs and a gingham cloth that drapes all
+            // round with folds. On it: two plates (one with a fish), a mug, and a
+            // vase of flowers. The cloth's hem is the low edge.
             let wood = flatMaterial("wood", UIColor(red: 0.62, green: 0.40, blue: 0.22, alpha: 1))
             let cloth = flatMaterial("gingham", .red, image: Self.drawGingham()) {
                 $0.diffuse.wrapS = .repeat
                 $0.diffuse.wrapT = .repeat
                 $0.diffuse.contentsTransform = SCNMatrix4MakeScale(3, 3, 1)
             }
+            // The folds are the same cloth a shade darker, so they read as creases.
+            let fold = flatMaterial("ginghamFold", .red, image: Self.drawGingham()) {
+                $0.diffuse.wrapS = .repeat
+                $0.diffuse.wrapT = .repeat
+                $0.diffuse.contentsTransform = SCNMatrix4MakeScale(3, 3, 1)
+                $0.multiply.contents = UIColor(white: 0.84, alpha: 1)
+            }
+            let china = flatMaterial("china", UIColor(red: 0.98, green: 0.97, blue: 0.93, alpha: 1))
+            let rim = flatMaterial("chinaRim", UIColor(red: 0.35, green: 0.55, blue: 0.80, alpha: 1))
             let depth = Self.lowDepth
             let hem: Float = 0.2
             let top = u + hem
             for x in [-px + 0.08, px - 0.08] {
                 for z in [-0.12, -depth + 0.12] {
-                    parts.addChildNode(box(0.1, top, 0.1, wood, at: SCNVector3(x, top / 2, z)))
+                    _ = piece(SCNCone(topRadius: 0.045, bottomRadius: 0.035, height: CGFloat(top)), wood, at: SCNVector3(x, top / 2, z))
                 }
+            }
+            // The apron under the top, the top, and the cloth over it.
+            for z in [-0.1, -depth + 0.1] {
+                parts.addChildNode(box(2 * px - 0.3, 0.07, 0.03, wood, at: SCNVector3(0, top - 0.045, z)))
             }
             parts.addChildNode(box(2 * px, 0.08, depth, wood, at: SCNVector3(0, top + 0.04, -depth / 2)))
             parts.addChildNode(box(2 * px + 0.08, 0.025, depth + 0.08, cloth, at: SCNVector3(0, top + 0.09, -depth / 2), round: 0))
-            // Hems drape over the front and back edges.
+            // Hems drape over all four edges, with folds down the front and back.
             for z in [0.03, -depth - 0.03] {
                 parts.addChildNode(box(2 * px + 0.08, hem, 0.02, cloth, at: SCNVector3(0, top + 0.1 - hem / 2, z), round: 0))
+                for x in [-0.62, -0.21, 0.21, 0.62] as [Float] {
+                    parts.addChildNode(box(0.06, hem, 0.02, fold, at: SCNVector3(x, top + 0.1 - hem / 2, z + (z > 0 ? 0.012 : -0.012)), round: 0))
+                }
             }
-            // A mug and a little vase so it reads as a table at a glance.
-            let mug = SCNCylinder(radius: 0.09, height: 0.18)
-            mug.materials = [flatMaterial("mug", UIColor(red: 0.98, green: 0.96, blue: 0.9, alpha: 1))]
-            let mugNode = SCNNode(geometry: mug)
-            mugNode.position = SCNVector3(-0.45, top + 0.19, -0.5)
-            parts.addChildNode(mugNode)
-            let vase = SCNSphere(radius: 0.12)
-            vase.materials = [flatMaterial("vase", UIColor(red: 0.45, green: 0.72, blue: 0.85, alpha: 1))]
-            let vaseNode = SCNNode(geometry: vase)
-            vaseNode.position = SCNVector3(0.4, top + 0.17, -0.6)
-            parts.addChildNode(vaseNode)
-            let bloom = SCNSphere(radius: 0.09)
-            bloom.materials = [flatMaterial("bloom", UIColor(red: 1.0, green: 0.78, blue: 0.2, alpha: 1))]
-            let bloomNode = SCNNode(geometry: bloom)
-            bloomNode.position = SCNVector3(0.4, top + 0.36, -0.6)
-            parts.addChildNode(bloomNode)
+            for x in [-(px + 0.05), px + 0.05] {
+                parts.addChildNode(box(0.02, hem, depth + 0.08, cloth, at: SCNVector3(x, top + 0.1 - hem / 2, -depth / 2), round: 0))
+            }
+            // Corners hang a little fuller.
+            for x in [-(px + 0.04), px + 0.04] {
+                for z in [0.02, -depth - 0.02] {
+                    parts.addChildNode(box(0.1, hem, 0.1, fold, at: SCNVector3(x, top + 0.1 - hem / 2, z), round: 0.03))
+                }
+            }
+            // Two plates with blue rims, a fish on one.
+            for (x, z) in [(-0.45, -0.32), (0.42, -0.8)] as [(Float, Float)] {
+                _ = piece(SCNCylinder(radius: 0.14, height: 0.012), china, at: SCNVector3(x, top + 0.106, z))
+                _ = piece(SCNTorus(ringRadius: 0.125, pipeRadius: 0.007), rim, at: SCNVector3(x, top + 0.113, z))
+            }
+            let salmon = flatMaterial("salmon", UIColor(red: 0.98, green: 0.60, blue: 0.48, alpha: 1))
+            _ = piece(SCNSphere(radius: 0.1), salmon, at: SCNVector3(-0.46, top + 0.135, -0.32), scale: SCNVector3(1, 0.25, 0.5))
+            let tail = piece(SCNBox(width: 0.07, height: 0.03, length: 0.06, chamferRadius: 0.005), salmon, at: SCNVector3(-0.34, top + 0.13, -0.32))
+            tail.eulerAngles.y = 0.6
+            // A mug with a handle.
+            let mugMat = flatMaterial("mug", UIColor(red: 0.98, green: 0.96, blue: 0.9, alpha: 1))
+            _ = piece(SCNCylinder(radius: 0.08, height: 0.17), mugMat, at: SCNVector3(0.0, top + 0.185, -0.62))
+            let handle = piece(SCNTorus(ringRadius: 0.05, pipeRadius: 0.014), mugMat, at: SCNVector3(0.11, top + 0.19, -0.62))
+            handle.eulerAngles.x = .pi / 2
+            // A vase with three flowers on short stems. Everything stays under
+            // 2.0 m (lowTop), where a jump clears it.
+            let vaseMat = flatMaterial("vase", UIColor(red: 0.45, green: 0.72, blue: 0.85, alpha: 1))
+            _ = piece(SCNSphere(radius: 0.1), vaseMat, at: SCNVector3(0.45, top + 0.2, -0.62))
+            _ = piece(SCNCylinder(radius: 0.04, height: 0.07), vaseMat, at: SCNVector3(0.45, top + 0.31, -0.62))
+            let stalk = flatMaterial("stalk", UIColor(red: 0.35, green: 0.62, blue: 0.30, alpha: 1))
+            let petals: [(Float, Float, UIColor)] = [
+                (-0.07, 0.0, UIColor(red: 1.0, green: 0.78, blue: 0.2, alpha: 1)),
+                (0.0, -0.06, UIColor(red: 1.0, green: 0.55, blue: 0.68, alpha: 1)),
+                (0.07, 0.03, UIColor(red: 0.98, green: 0.96, blue: 0.9, alpha: 1))
+            ]
+            for (i, flower) in petals.enumerated() {
+                let stemNode = piece(SCNCylinder(radius: 0.008, height: 0.1), stalk,
+                                     at: SCNVector3(0.45 + flower.0 * 0.5, top + 0.33, -0.62 + flower.1 * 0.5))
+                stemNode.eulerAngles = SCNVector3(flower.1 * 4, 0, -flower.0 * 4)
+                _ = piece(SCNSphere(radius: 0.045), flatMaterial("bloom\(i)", flower.2), at: SCNVector3(0.45 + flower.0, top + 0.37, -0.62 + flower.1))
+            }
 
         case .farm:
-            // A clothesline on two T posts with a sheet hanging down to the low edge.
+            // A clothesline on two T posts: a blue sheet that sways, a yellow
+            // towel, a red sock, wooden pegs, a bird on one post, grass at the feet.
             let post = flatMaterial("post", UIColor(red: 0.55, green: 0.40, blue: 0.26, alpha: 1))
             let line = flatMaterial("line", UIColor(white: 0.95, alpha: 1))
             let sheet = flatMaterial("sheet", .blue, image: Self.drawSheet())
+            let towel = flatMaterial("towel", .yellow, image: Self.drawTowel())
+            let sock = flatMaterial("sock", UIColor(red: 0.85, green: 0.25, blue: 0.25, alpha: 1))
+            let sockToe = flatMaterial("sockToe", UIColor(white: 0.96, alpha: 1))
+            let pin = flatMaterial("pin", UIColor(red: 0.95, green: 0.85, blue: 0.6, alpha: 1))
+            let grass = flatMaterial("grass", UIColor(red: 0.42, green: 0.68, blue: 0.28, alpha: 1))
             let lineY = u + 0.55
             for x in [-px, px] {
                 parts.addChildNode(box(0.12, lineY + 0.14, 0.12, post, at: SCNVector3(x, (lineY + 0.14) / 2, -0.2)))
                 parts.addChildNode(box(0.08, 0.08, 0.5, post, at: SCNVector3(x, lineY + 0.06, -0.2)))
+                // A strut under the crossbar, and grass round the foot.
+                let strut = box(0.05, 0.05, 0.3, post, at: SCNVector3(x, lineY - 0.1, -0.33))
+                strut.eulerAngles.x = -0.8
+                parts.addChildNode(strut)
+                for (dx, dz) in [(-0.1, 0.1), (0.12, -0.08), (0.0, 0.14)] as [(Float, Float)] {
+                    _ = piece(SCNCone(topRadius: 0, bottomRadius: 0.05, height: 0.14), grass, at: SCNVector3(x + dx, 0.07, -0.2 + dz))
+                }
             }
             let rope = SCNCylinder(radius: 0.015, height: CGFloat(2 * px))
             rope.materials = [line]
@@ -2510,15 +2842,44 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             ropeNode.eulerAngles.z = .pi / 2
             ropeNode.position = SCNVector3(0, lineY, -0.2)
             parts.addChildNode(ropeNode)
-            let cloth = SCNPlane(width: CGFloat(2 * px - 0.25), height: CGFloat(lineY - u))
-            cloth.materials = [sheet]
-            let clothNode = SCNNode(geometry: cloth)
-            clothNode.position = SCNVector3(0, (lineY + u) / 2, -0.2)
-            parts.addChildNode(clothNode)
-            let pin = flatMaterial("pin", UIColor(red: 0.95, green: 0.85, blue: 0.6, alpha: 1))
-            for x in [-0.55, 0.0, 0.55] as [Float] {
+            // The sheet and the towel hang from the line and sway on their own
+            // beat, so they're their own nodes pivoting at the rope. Swinging only
+            // lifts their hems, never lowers them below the low edge.
+            func hanging(_ m: SCNMaterial, width: Float, height: Float, x: Float, period: TimeInterval, swing: CGFloat) {
+                let holder = SCNNode()
+                holder.position = SCNVector3(x, lineY, -0.2)
+                let plane = SCNPlane(width: CGFloat(width), height: CGFloat(height))
+                plane.materials = [m]
+                let clothNode = SCNNode(geometry: plane)
+                clothNode.position = SCNVector3(0, -height / 2, 0)
+                holder.addChildNode(clothNode)
+                let back = SCNAction.rotateBy(x: -swing, y: 0, z: 0, duration: period)
+                back.timingMode = .easeInEaseOut
+                let forth = SCNAction.rotateBy(x: swing, y: 0, z: 0, duration: period)
+                forth.timingMode = .easeInEaseOut
+                holder.eulerAngles.x = Float(swing / 2)
+                holder.runAction(.repeatForever(.sequence([back, forth])))
+                applyLook(to: holder)
+                root.addChildNode(holder)
+            }
+            hanging(sheet, width: 1.0, height: lineY - u, x: -0.3, period: 1.15, swing: 0.1)
+            hanging(towel, width: 0.3, height: 0.45, x: 0.43, period: 0.9, swing: 0.14)
+            // A sock: the leg hanging from the line, the foot turned out.
+            parts.addChildNode(box(0.1, 0.24, 0.03, sock, at: SCNVector3(0.75, lineY - 0.13, -0.2), round: 0.01))
+            parts.addChildNode(box(0.14, 0.08, 0.03, sock, at: SCNVector3(0.77, lineY - 0.27, -0.2), round: 0.02))
+            parts.addChildNode(box(0.05, 0.08, 0.032, sockToe, at: SCNVector3(0.82, lineY - 0.27, -0.2), round: 0.02))
+            // Pegs where each thing meets the line.
+            for x in [-0.72, -0.3, 0.12, 0.33, 0.53, 0.75] as [Float] {
                 parts.addChildNode(box(0.04, 0.12, 0.05, pin, at: SCNVector3(x, lineY - 0.02, -0.19), round: 0.01))
             }
+            // A little yellow bird perched on the right post's crossbar, out at
+            // the lane's edge like the post itself.
+            let bird = flatMaterial("bird", UIColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 1))
+            _ = piece(SCNSphere(radius: 0.05), bird, at: SCNVector3(px, lineY + 0.14, -0.2), scale: SCNVector3(1, 0.85, 1.2))
+            _ = piece(SCNSphere(radius: 0.035), bird, at: SCNVector3(px, lineY + 0.2, -0.15))
+            let beak = piece(SCNCone(topRadius: 0, bottomRadius: 0.012, height: 0.035),
+                             flatMaterial("beak", UIColor(red: 0.95, green: 0.55, blue: 0.2, alpha: 1)), at: SCNVector3(px, lineY + 0.19, -0.11))
+            beak.eulerAngles.x = -.pi / 2
         }
         // Before merging, like the cat tree, so the merged mesh keeps the bend.
         applyLook(to: parts)
@@ -2741,18 +3102,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         ])))
 
         let bubble = SCNSphere(radius: 0.6)
-        bubble.segmentCount = 24
+        bubble.segmentCount = 28
         let skin = SCNMaterial()
         skin.diffuse.contents = powerColor(power)
         skin.lightingModel = .constant
-        skin.transparency = 0.24
+        skin.transparency = 0.22
         skin.blendMode = .alpha
         skin.writesToDepthBuffer = false
+        // A soap-bubble rim: clear in the middle, brighter and shifting through
+        // faint rainbow tints toward the edge, where the sphere turns away from
+        // the camera. applyLook keeps this surface modifier and adds the fog.
+        skin.shaderModifiers = [.surface: Self.bubbleModifier]
         bubble.materials = [skin]
         let shell = SCNNode(geometry: bubble)
         shell.castsShadow = false
         shell.renderingOrder = 20
         bob.addChildNode(shell)
+        // The bubble breathes a little.
+        let grow = SCNAction.scale(to: 1.06, duration: 0.7)
+        grow.timingMode = .easeInEaseOut
+        let shrink = SCNAction.scale(to: 0.97, duration: 0.7)
+        shrink.timingMode = .easeInEaseOut
+        shell.runAction(.repeatForever(.sequence([grow, shrink])))
 
         applyLook(to: node)
         let shadow = shadowNode(width: 0.9, length: 0.7)
@@ -2927,6 +3298,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         model.scale = SCNVector3(0.95, 0.95, 0.95)
         model.name = "model"
         applyLook(to: model)
+        // Mist from the nozzle: a little "psst" at the top of each hop while it
+        // chases, a long one when it has her. Off until then; see updateChase.
+        let spray = SCNParticleSystem()
+        spray.particleImage = puffImage
+        spray.birthRate = 0
+        spray.particleLifeSpan = 0.45
+        spray.particleLifeSpanVariation = 0.1
+        spray.particleSize = 0.09
+        spray.particleSizeVariation = 0.04
+        spray.particleColor = UIColor(red: 0.80, green: 0.93, blue: 1.0, alpha: 0.75)
+        spray.emittingDirection = SCNVector3(0, 0, -1)
+        spray.spreadingAngle = 16
+        spray.particleVelocity = 3.2
+        spray.particleVelocityVariation = 0.8
+        spray.blendMode = .alpha
+        spray.isLocal = false
+        spray.propertyControllers = [.opacity: Self.fadeOutController()]
+        let mistNode = SCNNode()
+        mistNode.position = SCNVector3(0, 0.99, -0.42)
+        mistNode.addParticleSystem(spray)
+        model.addChildNode(mistNode)
+        mist = spray
         bottle.addChildNode(model)
 
         let shadow = shadowNode(width: 0.8, length: 0.8)
@@ -2956,7 +3349,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         landSquash = 1
         haptic(.heavy)
         puff(at: SCNVector3(visualX, height + 0.2, 0.2), count: 14, color: UIColor(white: 0.95, alpha: 0.9))
-        shakeCamera()
+        shakeCamera(amp: 0.12, time: 0.24)
+        fovKick = 2
     }
 
     /// Second stumble: the bottle catches up and sprays her. It's a crash.
@@ -2968,9 +3362,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if saveLife() { return }
         sprayed = true
         crash()
-        // A burst of mist over her head.
+        // A burst of mist over her head, and the nozzle keeps spraying a moment.
         puff(at: SCNVector3(visualX, height + 1.5, 0.3), count: 40,
              color: UIColor(red: 0.78, green: 0.92, blue: 1.0, alpha: 0.95))
+        mistLeft = 0.9
+        mist?.birthRate = 220
     }
 
     /// Hops the bottle along behind her while it chases, drops it back when it
@@ -2986,9 +3382,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // A little off to one side, so the La Croix logo still shows.
         let goalX = visualX + (sprayed ? 0.9 : 0.75)
         bottleX += (goalX - bottleX) * min(1, 7 * dt)
+        // The mist turns itself off once its moment is up.
+        if mistLeft > 0 {
+            mistLeft -= dt
+            if mistLeft <= 0 { mist?.birthRate = 0 }
+        }
         bottle.isHidden = bottleZ > bottleGone
         guard !bottle.isHidden else { return }
-        let hop = sprayed ? 0.25 : abs(sin(bottleClock * 9)) * 0.32
+        // 0 on the road, 1 at the top of a hop.
+        let hopPhase: Float = sprayed ? 0 : abs(sin(bottleClock * 9))
+        let hop = sprayed ? 0.25 : hopPhase * 0.32
         bottle.position = SCNVector3(bottleX, hop, bottleZ)
         // Leans over her when it catches her, nozzle down at her head.
         bottle.eulerAngles.z = sprayed ? 0.45 : 0
@@ -2996,6 +3399,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // Turned side-on, nozzle aimed in at her from her right, rocking as it hops.
         model?.eulerAngles = SCNVector3(sprayed ? 0 : -0.12 + sin(bottleClock * 9) * 0.08, 1.0,
                                         sprayed ? 0 : sin(bottleClock * 4.5) * 0.1)
+        // Squashes flat as it lands and stretches at the top of each hop, like a
+        // soft plastic bottle; when it has her it pumps with each squeeze.
+        let ground = 1 - hopPhase
+        let squish = ground * ground * 0.15
+        let pump: Float = sprayed ? 0.04 * sin(bottleClock * 18) : 0
+        model?.scale = SCNVector3(0.95 * (1 + squish + pump), 0.95 * (1 - squish - pump), 0.95 * (1 + squish + pump))
+        // A short "psst" each time it reaches the top of a hop.
+        if !sprayed && lastHop < 0.97 && hopPhase >= 0.97 {
+            mistLeft = max(mistLeft, 0.07)
+            mist?.birthRate = 90
+        }
+        lastHop = hopPhase
     }
 
     // MARK: - Contacts
@@ -3109,15 +3524,59 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func collect(_ item: TrackItem) {
         let spot = SCNVector3(item.node.position.x, item.node.position.y + 0.6, 0.2)
-        recycle(item)
         items.removeAll { $0 === item }
+        flyAway(item)
         if let power = item.power {
             startPower(power)
             return
         }
         food += 1
         haptic(.light)
-        puff(at: spot, count: 12, color: UIColor(red: 1.0, green: 0.72, blue: 0.30, alpha: 1))
+        sparkle(at: spot, count: 9, color: UIColor(red: 1.0, green: 0.86, blue: 0.45, alpha: 1))
+        puff(at: spot, count: 6, color: UIColor(red: 1.0, green: 0.72, blue: 0.30, alpha: 1))
+    }
+
+    /// The can or power-up she grabbed hops up, spins once, and shrinks into her
+    /// lap instead of vanishing. Its node stays in the scene for that quarter
+    /// second, off the items list so the rules ignore it, then updateCollected
+    /// puts it back in its pool.
+    private func flyAway(_ item: TrackItem) {
+        let node = item.node
+        node.childNode(withName: "shadow", recursively: false)?.isHidden = true
+        node.removeAction(forKey: "pop")
+        let time = TimeInterval(collectTime)
+        let up = SCNAction.moveBy(x: 0, y: 0.5, z: 0, duration: time * 0.4)
+        up.timingMode = .easeOut
+        let intoLap = SCNAction.move(to: SCNVector3(visualX, height + 0.9, 0.3), duration: time * 0.6)
+        intoLap.timingMode = .easeIn
+        node.runAction(.group([
+            .sequence([up, intoLap]),
+            .rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: time),
+            .sequence([.scale(to: 1.25, duration: time * 0.35), .scale(to: 0.05, duration: time * 0.65)])
+        ]), forKey: "collect")
+        collected.append(Collected(node: node, left: collectTime + 0.05))
+    }
+
+    private func updateCollected(dt: Float) {
+        guard !collected.isEmpty else { return }
+        for c in collected {
+            c.left -= dt
+            if c.left <= 0 { returnToPool(c.node) }
+        }
+        collected.removeAll { $0.left <= 0 }
+    }
+
+    /// Back to its pool with every trace of the collect animation undone, so the
+    /// next addItem gets a plain node.
+    private func returnToPool(_ node: SCNNode) {
+        node.removeAction(forKey: "collect")
+        node.removeFromParentNode()
+        node.scale = SCNVector3(1, 1, 1)
+        node.eulerAngles = SCNVector3Zero
+        node.opacity = 1
+        if let key = node.name {
+            itemPool[key, default: []].append(node)
+        }
     }
 
     private func crash() {
@@ -3145,12 +3604,26 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
         hud.flashWhite()
         hud.clearLines()
-        shakeCamera()
-        // A silly tip-over, not a punishment.
+        shakeCamera(amp: 0.26, time: 0.42)
+        fovKick = 4
+        // A silly tip-over, not a punishment: a hop, a roll onto her side with a
+        // little settle, and cartoon stars circling over her head.
+        let roll = SCNAction.rotateBy(x: 0, y: 0, z: tilt >= 0 ? 1.0 : -1.0, duration: 0.22)
+        roll.timingMode = .easeOut
+        let settleBack = SCNAction.rotateBy(x: 0, y: 0, z: tilt >= 0 ? -0.1 : 0.1, duration: 0.14)
+        settleBack.timingMode = .easeInEaseOut
+        let hop = SCNAction.moveBy(x: 0, y: 0.5, z: 0, duration: 0.12)
+        hop.timingMode = .easeOut
+        let drop = SCNAction.moveBy(x: 0, y: -0.5, z: 0, duration: 0.18)
+        drop.timingMode = .easeIn
         catNode.runAction(.group([
-            .rotateBy(x: 0, y: 0, z: tilt >= 0 ? 0.9 : -0.9, duration: 0.25),
-            .sequence([.moveBy(x: 0, y: 0.5, z: 0, duration: 0.12), .moveBy(x: 0, y: -0.5, z: 0, duration: 0.18)])
+            .sequence([roll, settleBack]),
+            .sequence([hop, drop, .moveBy(x: 0, y: 0.08, z: 0, duration: 0.07), .moveBy(x: 0, y: -0.08, z: 0, duration: 0.07)])
         ]), forKey: "tip")
+        starsNode.isHidden = false
+        starsClock = 0
+        starsAngle = 0
+        puff(at: SCNVector3(visualX, height + 0.3, 0.2), count: 16, color: UIColor(white: 0.95, alpha: 0.9))
         let newBest = score > bestScore
         if newBest {
             bestScore = score
@@ -3161,19 +3634,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         hud.showDead(score: score, food: food, seconds: seconds, best: bestScore, newBest: newBest)
     }
 
-    private func shakeCamera() {
-        cameraNode.removeAction(forKey: "shake")
-        let shake = SCNAction.sequence([
-            .moveBy(x: 0.18, y: 0.08, z: 0, duration: 0.03),
-            .moveBy(x: -0.30, y: -0.12, z: 0, duration: 0.04),
-            .moveBy(x: 0.22, y: 0.06, z: 0, duration: 0.04),
-            .moveBy(x: -0.10, y: -0.02, z: 0, duration: 0.04)
-        ])
-        cameraNode.runAction(shake, forKey: "shake")
+    /// Starts a camera shake that dies out over `time` seconds; updateCamera
+    /// applies it. A new shake replaces the one running.
+    private func shakeCamera(amp: Float = 0.2, time: Float = 0.32) {
+        shakeAmp = amp
+        shakeTotal = time
+        shakeLeft = time
     }
 
-    /// Builds the puff emitters once. Each one runs all the time at a birth rate
-    /// of 0, and a puff turns it up for a twentieth of a second.
+    /// Builds the puff, sparkle, and ring effects once. Each emitter runs all the
+    /// time at a birth rate of 0, and a puff turns it up for a twentieth of a
+    /// second. Nothing here is built mid-run.
     private func buildPuffs() {
         for _ in 0..<4 {
             let ps = SCNParticleSystem()
@@ -3194,6 +3665,86 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             scene.rootNode.addChildNode(holder)
             puffs.append(Puff(node: holder, system: ps))
         }
+        // Sparkles: little stars that twirl up out of a can or power-up she grabs.
+        let star = Self.drawStar(points: 4, color: UIColor(white: 1, alpha: 1), outline: nil)
+        for _ in 0..<3 {
+            let ps = SCNParticleSystem()
+            ps.particleImage = star
+            ps.birthRate = 0
+            ps.particleLifeSpan = 0.5
+            ps.particleLifeSpanVariation = 0.15
+            ps.particleSize = 0.26
+            ps.particleSizeVariation = 0.1
+            ps.particleVelocity = 2.4
+            ps.particleVelocityVariation = 1.2
+            ps.emittingDirection = SCNVector3(0, 1, 0.4)
+            ps.spreadingAngle = 60
+            ps.acceleration = SCNVector3(0, -2.5, 2.5)
+            ps.particleAngularVelocity = 180
+            ps.particleAngularVelocityVariation = 120
+            ps.blendMode = .alpha
+            ps.propertyControllers = [.opacity: Self.fadeOutController()]
+            let holder = SCNNode()
+            holder.addParticleSystem(ps)
+            scene.rootNode.addChildNode(holder)
+            sparkles.append(Puff(node: holder, system: ps))
+        }
+        // Landing rings: a soft ring picture lying on the floor that spreads and fades.
+        let ringMaterial = SCNMaterial()
+        ringMaterial.diffuse.contents = Self.drawRing()
+        ringMaterial.lightingModel = .constant
+        ringMaterial.blendMode = .alpha
+        ringMaterial.writesToDepthBuffer = false
+        Self.smoothSampling(ringMaterial.diffuse)
+        for _ in 0..<3 {
+            let node = SCNNode(geometry: groundPlane(width: 1.6, length: 1.6, material: ringMaterial))
+            node.renderingOrder = 6
+            node.castsShadow = false
+            node.isHidden = true
+            applyLook(to: node)
+            scene.rootNode.addChildNode(node)
+            rings.append(Ring(node: node))
+        }
+    }
+
+    /// Fires the next sparkle emitter in turn, like puff.
+    private func sparkle(at point: SCNVector3, count: Int, color: UIColor) {
+        guard !sparkles.isEmpty else { return }
+        let p = sparkles[nextSparkle]
+        nextSparkle = (nextSparkle + 1) % sparkles.count
+        p.node.position = point
+        p.system.particleColor = color
+        p.system.birthRate = CGFloat(count) * 20
+        p.left = 0.05
+    }
+
+    /// A ring that spreads on the floor where she landed. `strength` (0 to 1) is
+    /// how hard she came down: a bigger, bolder ring for a slam.
+    private func landingRing(at point: SCNVector3, strength: Float) {
+        guard !rings.isEmpty else { return }
+        let r = rings[nextRing]
+        nextRing = (nextRing + 1) % rings.count
+        r.node.position = point
+        r.node.isHidden = false
+        r.node.scale = SCNVector3(0.3, 1, 0.3)
+        r.strength = strength
+        r.left = ringTime
+    }
+
+    /// Spreads and fades each live ring, and slides it back with the road.
+    private func updateRings(dt: Float, dz: Float) {
+        for r in rings where r.left > 0 {
+            r.left -= dt
+            r.node.position.z += dz
+            if r.left <= 0 {
+                r.node.isHidden = true
+                continue
+            }
+            let t = 1 - r.left / ringTime
+            let s = 0.3 + (1.1 + 0.5 * r.strength) * t
+            r.node.scale = SCNVector3(s, 1, s)
+            r.node.opacity = CGFloat((1 - t) * (1 - t) * (0.5 + 0.4 * r.strength))
+        }
     }
 
     /// Fires the next puff emitter in turn. Four is plenty: a puff lasts under half
@@ -3211,6 +3762,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     /// Turns each puff back off once its twentieth of a second is up.
     private func updatePuffs(dt: Float) {
         for p in puffs where p.left > 0 {
+            p.left -= dt
+            if p.left <= 0 { p.system.birthRate = 0 }
+        }
+        for p in sparkles where p.left > 0 {
             p.left -= dt
             if p.left <= 0 { p.system.birthRate = 0 }
         }
@@ -3339,6 +3894,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         lane = next
         tilt = delta > 0 ? -0.2 : 0.2
         cart.didChangeLane(delta)
+        if height - floorY < 0.1 {
+            // A scuff of dust off the wheels she pushes away from.
+            puff(at: SCNVector3(visualX - Float(delta) * 0.55, floorY + 0.08, 0.35), count: 5,
+                 color: UIColor(white: 1, alpha: 0.45))
+        }
         DispatchQueue.main.async {
             UISelectionFeedbackGenerator().selectionChanged()
         }
@@ -3353,6 +3913,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         jumping = true
         vy = jumpSpeed
         cart.didJump()
+        // A small widening of the view as she leaves the ground.
+        fovKick = 2.2
         haptic(.light)
         return true
     }
@@ -3441,6 +4003,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func resetRun() {
         items.forEach { recycle($0) }
         items.removeAll()
+        collected.forEach { returnToPool($0.node) }
+        collected.removeAll()
+        for r in rings {
+            r.left = 0
+            r.node.isHidden = true
+        }
+        starsNode.isHidden = true
+        shakeLeft = 0
+        fovKick = 0
+        landVy = 0
+        mistLeft = 0
+        mist?.birthRate = 0
+        lastHop = 0
         hud.clearLines()
         catNode.removeAction(forKey: "tip")
         lane = 1
@@ -3637,6 +4212,61 @@ private extension GameScene {
             let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
             ctx.cgContext.drawRadialGradient(gradient, startCenter: CGPoint(x: 32, y: 32), startRadius: 0,
                                              endCenter: CGPoint(x: 32, y: 32), endRadius: 32, options: [])
+        }
+    }
+
+    /// A star with `points` points: four for sparkles and glints, five with an
+    /// outline for the cartoon stars over her head after a crash.
+    static func drawStar(points: Int, color: UIColor, outline: UIColor?) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { ctx in
+            let center = CGPoint(x: 32, y: 32)
+            let path = UIBezierPath()
+            let inner: CGFloat = points == 4 ? 0.28 : 0.46
+            for i in 0..<(points * 2) {
+                let a = CGFloat(i) * .pi / CGFloat(points) - .pi / 2
+                let r: CGFloat = i % 2 == 0 ? 28 : 28 * inner
+                let p = CGPoint(x: center.x + cos(a) * r, y: center.y + sin(a) * r)
+                if i == 0 {
+                    path.move(to: p)
+                } else {
+                    path.addLine(to: p)
+                }
+            }
+            path.close()
+            path.lineJoinStyle = .round
+            color.setFill()
+            path.fill()
+            if let outline {
+                outline.setStroke()
+                path.lineWidth = 3
+                path.stroke()
+            }
+        }
+    }
+
+    /// A soft ring for the landing effect: clear in the middle, white at about
+    /// three quarters of the radius, clear again at the edge.
+    static func drawRing() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 128, height: 128)).image { ctx in
+            let colors = [UIColor(white: 1, alpha: 0).cgColor, UIColor(white: 1, alpha: 1).cgColor,
+                          UIColor(white: 1, alpha: 0).cgColor] as CFArray
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0.55, 0.76, 0.96])!
+            ctx.cgContext.drawRadialGradient(gradient, startCenter: CGPoint(x: 64, y: 64), startRadius: 0,
+                                             endCenter: CGPoint(x: 64, y: 64), endRadius: 64, options: [])
+        }
+    }
+
+    /// A yellow towel with white bands, for the farm clothesline.
+    static func drawTowel() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 64, height: 128)).image { ctx in
+            UIColor(red: 0.98, green: 0.84, blue: 0.36, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 128))
+            UIColor(white: 1, alpha: 0.9).setFill()
+            for y in [22, 36, 92, 106] {
+                ctx.fill(CGRect(x: 0, y: y, width: 64, height: 6))
+            }
+            UIColor(red: 0.86, green: 0.66, blue: 0.22, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 0, y: 120, width: 64, height: 8))
         }
     }
 }
