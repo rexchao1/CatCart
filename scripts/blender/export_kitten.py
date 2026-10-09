@@ -288,6 +288,10 @@ parts = [{"name": k, "parent": PARENT[k],
           "position": game(PIVOT[k] - (PIVOT[PARENT[k]] if PARENT[k] else Vector()))} for k in PARENT]
 out = {"parts": parts, "textures": {"iris": "iris.png", "grain": "fur-grain.png"},
        "groups": [{k: v for k, v in g.items() if k != "keys"} for g in groups.values()]}
+# A breed (make_kitten_v4.py --breed) carries its own nose, ear, and collar
+# colors; her file has none and the builder uses hers.
+if "catcart_palette" in scene:
+    out["palette"] = json.loads(scene["catcart_palette"])
 (OUT / "kitten.json").write_text(json.dumps(out))
 
 # The game culls back faces, so a part wound inside out vanishes (an eye cap
