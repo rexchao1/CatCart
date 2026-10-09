@@ -195,6 +195,20 @@ Not checked: played by hand or on a phone. Whether half trees feels right, and w
 
 Built with subagents, each in its own worktree and simulator: one for steps 1 to 3, one for steps 4 to 6 at the same time, then one for step 7 on top of both. Step 8 is the merged check.
 
+## Round 2: trees that look like real cat furniture (2026-10-09)
+
+Rex: "The trees have to look like real cat trees that also are creative and realistic and fun." Built in `makeCatTree`, `makeRamp`, and the helpers beside them; the carpet pictures in `scripts/make_3d_textures.py`.
+
+- Roof: cream carpet with a pair of paw prints per lane width (baked into `carpetTop`), rounded edges in the accent's darker shade. Flat for the whole length, nothing on it. The ramp's slope is the same carpet, so the prints lead up it.
+- Side carpet (`carpetSide`) is now a neutral light gray tinted by each material's multiply color: six accents (cream, soft gray, mint, blush pink, lavender, sand) and five toy colors, picked per built copy (`treesBuilt`), so a pool of one size holds different trees.
+- Posts are thicker (0.15 m) with bolder rope wraps in the sisal picture, twelve sides each.
+- Condos: 1.5 m long, round porthole in a rolled cream rim or an arched doorway, cat ears on the porthole ones. A tall tree's front bay is a condo on both stories (a solid wall), then the stories alternate.
+- Open bays: hammock, tunnel (lookout tube on the upper story), or a sisal scratch board with steps on the outer side, in turn. All inside |x| <= 0.95 and under the roof.
+- Toys: a pom-pom at the front and a mouse or feather at the back, each one merged mesh on a rocking pivot. Two moving nodes per tree, as before (was one).
+- Ramp: a sisal runner up the middle (a third element of the wedge), cream steps every slice tipped to the slope, darker sand sides. The wedge and slope are unchanged.
+- Cost: chamfers use three segments (a slab is about 230 triangles, not 1,500), cylinders 12 sides, tori 18 by 6. A 40 m short tree is roughly 6 to 7K triangles, a 38 m tall tree about 10K. Draw calls per tree: 8 static materials merged, 2 toys, 1 shadow (was 5 + 2 + 1). Ramps: 3 shared wedge materials, steps, rope.
+- Not checked here: no Swift compiler or simulator on this machine. The layout was mocked in Blender; the first Xcode build should screenshot a short and a tall tree in house and city and run `CATCART_PERF=1` on the wall of tall trees.
+
 ## Open
 
 - Whether 75 s is the right ramp length is a feel call. If 30 s is now too hard, 90 s is the next try.

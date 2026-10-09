@@ -2320,8 +2320,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     // MARK: - Cat tree
 
-    private lazy var carpetTop: SCNMaterial = carpetMaterial("carpetTop", fallback: UIColor(red: 0.90, green: 0.82, blue: 0.68, alpha: 1))
-    private lazy var carpetSide: SCNMaterial = carpetMaterial("carpetSide", fallback: UIColor(red: 0.80, green: 0.70, blue: 0.56, alpha: 1))
+    // The roof carpet is warm cream with paw prints pressed into the pile. The
+    // side carpet is a neutral light gray that each tree tints its own way (see
+    // treeAccents). Sisal is the wrapped rope on the posts and scratch boards.
+    private lazy var carpetTop: SCNMaterial = carpetMaterial("carpetTop", fallback: UIColor(red: 0.95, green: 0.90, blue: 0.81, alpha: 1))
+    private lazy var carpetSide: SCNMaterial = carpetMaterial("carpetSide", fallback: UIColor(red: 0.85, green: 0.83, blue: 0.80, alpha: 1))
     private lazy var sisal: SCNMaterial = carpetMaterial("sisalRope", fallback: UIColor(red: 0.78, green: 0.62, blue: 0.38, alpha: 1))
 
     private func carpetMaterial(_ name: String, fallback: UIColor) -> SCNMaterial {
@@ -2334,91 +2337,287 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return m
     }
 
+    /// Accent carpets, one per tree: cream, soft gray, mint, blush pink,
+    /// lavender, and the classic sand. The gray side-carpet picture is tinted by
+    /// a material's multiply color, so one picture gives every accent.
+    private static let treeAccents: [(CGFloat, CGFloat, CGFloat)] = [
+        (0.97, 0.91, 0.78), (0.74, 0.74, 0.77), (0.70, 0.90, 0.80),
+        (0.98, 0.78, 0.82), (0.82, 0.78, 0.95), (0.88, 0.74, 0.55)
+    ]
+    /// Toy colors for the pom-pom, hammock, and tunnel: raspberry, teal, orange, violet, green.
+    private static let treeToyColors: [(CGFloat, CGFloat, CGFloat)] = [
+        (0.98, 0.30, 0.55), (0.20, 0.70, 0.80), (1.0, 0.62, 0.15), (0.55, 0.40, 0.85), (0.25, 0.75, 0.45)
+    ]
+    /// Cream for door rims, ears, and steps; sand for a ramp's sides.
+    private static let creamTint: (CGFloat, CGFloat, CGFloat) = (0.99, 0.96, 0.90)
+    private static let sandTint: (CGFloat, CGFloat, CGFloat) = (0.88, 0.74, 0.55)
+    /// Counts the trees built, so each copy in a pool picks a different accent.
+    private var treesBuilt = 0
+
+    /// A copy of a carpet material, tinted and tiled. `tile` is how many times
+    /// the picture repeats across and along a face; one repeat is one lane width
+    /// of carpet. Every copy is its own draw call after the merge, so a tree
+    /// keeps to a handful of them.
+    private func carpet(_ base: SCNMaterial, tint: (CGFloat, CGFloat, CGFloat)? = nil, shade: CGFloat = 1,
+                        tile: (Float, Float) = (1, 1)) -> SCNMaterial {
+        let m = base.copy() as! SCNMaterial
+        if let t = tint {
+            m.multiply.contents = UIColor(red: t.0 * shade, green: t.1 * shade, blue: t.2 * shade, alpha: 1)
+        } else if shade != 1 {
+            m.multiply.contents = UIColor(white: shade, alpha: 1)
+        }
+        m.diffuse.contentsTransform = SCNMatrix4MakeScale(tile.0, tile.1, 1)
+        return m
+    }
+
+    /// A plain matte color for toys, hammocks, and tunnels.
+    private func plainMaterial(_ c: (CGFloat, CGFloat, CGFloat), shade: CGFloat = 1) -> SCNMaterial {
+        let m = SCNMaterial()
+        m.diffuse.contents = UIColor(red: c.0 * shade, green: c.1 * shade, blue: c.2 * shade, alpha: 1)
+        m.lightingModel = .lambert
+        m.isDoubleSided = true
+        return m
+    }
+
+    /// Adds one piece as a direct child of `parent`, with its whole placement on
+    /// itself. The merge below bakes in a child's own transform only, so pieces
+    /// are never nested (see the doorway note in the first tree build).
+    private func put(_ g: SCNGeometry, _ m: SCNMaterial? = nil, at p: SCNVector3,
+                     tilt: SCNVector3 = SCNVector3(0, 0, 0), into parent: SCNNode) {
+        if let m = m { g.materials = [m] }
+        let n = SCNNode(geometry: g)
+        n.position = p
+        n.eulerAngles = tilt
+        parent.addChildNode(n)
+    }
+
+    /// A carpeted slab with soft rounded edges. Three chamfer segments keep a
+    /// slab near 360 triangles instead of 1,500 with SceneKit's default of ten.
+    private func plushBox(_ w: Float, _ h: Float, _ l: Float, round: CGFloat) -> SCNBox {
+        let b = SCNBox(width: CGFloat(w), height: CGFloat(h), length: CGFloat(l), chamferRadius: round)
+        b.chamferSegmentCount = 3
+        return b
+    }
+
+    /// A cat ear: a triangle with a soft tip, standing up from y = 0, thin along z.
+    private func earShape(_ size: CGFloat) -> SCNShape {
+        let path = UIBezierPath()
+        path.flatness = 0.01
+        path.move(to: CGPoint(x: -size * 0.5, y: 0))
+        path.addLine(to: CGPoint(x: size * 0.5, y: 0))
+        path.addQuadCurve(to: CGPoint(x: 0, y: size), controlPoint: CGPoint(x: size * 0.42, y: size * 0.55))
+        path.addQuadCurve(to: CGPoint(x: -size * 0.5, y: 0), controlPoint: CGPoint(x: -size * 0.42, y: size * 0.55))
+        path.close()
+        let shape = SCNShape(path: path, extrusionDepth: 0.14)
+        shape.chamferRadius = 0.02
+        return shape
+    }
+
+    /// A doorway with a round top, standing up from y = 0, as thin as a decal.
+    private func archShape(width: CGFloat, height: CGFloat) -> SCNShape {
+        let r = width / 2
+        let path = UIBezierPath()
+        path.flatness = 0.01
+        path.move(to: CGPoint(x: -r, y: 0))
+        path.addLine(to: CGPoint(x: -r, y: height - r))
+        // From the left to the right over the top (the heart's lobes use the same sweep).
+        path.addArc(withCenter: CGPoint(x: 0, y: height - r), radius: r, startAngle: .pi, endAngle: 0, clockwise: false)
+        path.addLine(to: CGPoint(x: r, y: 0))
+        path.close()
+        return SCNShape(path: path, extrusionDepth: 0.02)
+    }
+
+    /// A hammock: a cloth band sagging between two points `span` apart, hung at
+    /// y = 0 and `sag` deep in the middle, stretched `depth` along z.
+    private func hammockShape(span: CGFloat, sag: CGFloat, depth: CGFloat) -> SCNShape {
+        let path = UIBezierPath()
+        path.flatness = 0.01
+        path.move(to: CGPoint(x: -span / 2, y: 0))
+        path.addQuadCurve(to: CGPoint(x: span / 2, y: 0), controlPoint: CGPoint(x: 0, y: -sag * 2))
+        path.addLine(to: CGPoint(x: span / 2, y: -0.06))
+        path.addQuadCurve(to: CGPoint(x: -span / 2, y: -0.06), controlPoint: CGPoint(x: 0, y: -sag * 2 - 0.1))
+        path.close()
+        return SCNShape(path: path, extrusionDepth: depth)
+    }
+
     /// A long carpeted cat tree that fills one lane like a Subway Surfers train.
-    /// Front edge at z = 0, stretching back to z = -length. The roof is the ride.
-    /// A short tree (roof 2.0 m) has one story of cubbies; a tall one (3.5 m) has
-    /// a carpeted shelf halfway up and a second story of cubbies on it.
+    /// Front edge at z = 0, stretching back to z = -length. The roof is the ride:
+    /// a thick cream platform with rounded edges and a trail of paw prints, flat
+    /// for its whole length, with nothing standing on it. Under it, thick sisal
+    /// posts frame bays that hold carpeted condos with round or arched doors and
+    /// cat ears, hammocks, tunnels, and scratch boards, in an accent carpet that
+    /// differs from tree to tree. A short tree (roof 2.0 m) has one story; a tall
+    /// one (3.5 m) has a carpet shelf halfway up and a second story of condos
+    /// above it, a tower you smash into from the road.
     private func makeCatTree(length: Float, roof roofTop: Float) -> SCNNode {
         let root = SCNNode()
-        // The roof, base, posts, and cubbies are built as separate pieces, then
-        // merged into one mesh below, so SceneKit draws the whole frame in about
-        // five calls (one per material) instead of one per piece (about 40).
+        // Everything that doesn't move is built as separate pieces, then merged
+        // into one mesh below, so SceneKit draws the whole frame in one call per
+        // material (eight or so) instead of one per piece (over a hundred).
         let parts = SCNNode()
-        let width: CGFloat = 1.75
-        let L = CGFloat(length)
+        let width: Float = 1.75
         let stories = roofTop > shortRoof + 0.01 ? 2 : 1
 
-        let topTex = carpetTop.copy() as! SCNMaterial
-        topTex.diffuse.contentsTransform = SCNMatrix4MakeScale(1, Float(L / width), 1)
-        let sideLong = carpetSide.copy() as! SCNMaterial
-        sideLong.diffuse.contentsTransform = SCNMatrix4MakeScale(Float(L / width), 0.2, 1)
+        // Each copy picks its own accent carpet and toy color, so a pool of six
+        // 24 m trees gives six different trees on the road.
+        treesBuilt += 1
+        let pick = treesBuilt &+ Int(length) &* 3 &+ (stories == 2 ? 1 : 0)
+        let accent = Self.treeAccents[pick % Self.treeAccents.count]
+        let toyColor = Self.treeToyColors[(pick / Self.treeAccents.count &+ treesBuilt) % Self.treeToyColors.count]
 
-        // Roof: thick, fluffy, and a lighter color than the road, so it reads as a platform.
-        let roof = SCNBox(width: width, height: 0.26, length: L, chamferRadius: 0.1)
-        roof.materials = [carpetSide, sideLong, carpetSide, sideLong, topTex, carpetSide]
-        let roofNode = SCNNode(geometry: roof)
-        roofNode.position = SCNVector3(0, roofTop - 0.13, -length / 2)
-        parts.addChildNode(roofNode)
+        // The materials. Each is one draw call once the pieces are merged.
+        let along = length / width
+        let roofCarpet = carpet(carpetTop, tile: (1, along))
+        let trimLong = carpet(carpetSide, tint: accent, shade: 0.76, tile: (along, 0.25))
+        let trim = carpet(carpetSide, tint: accent, shade: 0.76)
+        let plush = carpet(carpetSide, tint: accent)
+        let cream = carpet(carpetSide, tint: Self.creamTint)
+        let postHeight = roofTop - 0.3
+        let rope = carpet(sisal, tile: (2, postHeight * 1.5))
+        let toy = plainMaterial(toyColor)
+        let hole = SCNMaterial()
+        hole.diffuse.contents = UIColor(red: 0.18, green: 0.12, blue: 0.10, alpha: 1)
+        hole.lightingModel = .constant
 
-        // Base plate on the ground.
-        let base = SCNBox(width: width, height: 0.16, length: L, chamferRadius: 0.05)
-        base.materials = [carpetSide, sideLong, carpetSide, sideLong, carpetSide, carpetSide]
-        let baseNode = SCNNode(geometry: base)
-        baseNode.position = SCNVector3(0, 0.08, -length / 2)
-        parts.addChildNode(baseNode)
+        // Roof: thick and plush, cream on top with paw prints, the accent's
+        // darker shade around the edge, so it reads as a platform from far off.
+        // Box faces go front, right, back, left, top, bottom.
+        let roofThick: Float = 0.26
+        let roof = plushBox(width, roofThick, length, round: 0.11)
+        roof.materials = [trim, trimLong, trim, trimLong, roofCarpet, trim]
+        put(roof, at: SCNVector3(0, roofTop - roofThick / 2, -length / 2), into: parts)
 
-        // Each story is the space from one floor (the base, or the shelf) up to the
-        // next. A tall tree's shelf is a thinner carpet deck the length of the tree.
-        let storyHeight = (roofTop - 0.26 - 0.16) / Float(stories)
+        // Base plate on the ground, in the dark trim.
+        let floor0: Float = 0.16
+        let base = plushBox(width, floor0, length, round: 0.05)
+        base.materials = [trim, trimLong, trim, trimLong, trim, trim]
+        put(base, at: SCNVector3(0, floor0 / 2, -length / 2), into: parts)
+
+        // Each story is the space from one floor (the base, or the shelf) up to
+        // the next. A tall tree's shelf is a thinner carpet deck the length of the tree.
+        let storyHeight = (roofTop - roofThick - floor0) / Float(stories)
         if stories == 2 {
-            let shelf = SCNBox(width: width - 0.08, height: 0.14, length: L - 0.2, chamferRadius: 0.05)
-            shelf.materials = [carpetSide, sideLong, carpetSide, sideLong, carpetSide, carpetSide]
-            let shelfNode = SCNNode(geometry: shelf)
-            shelfNode.position = SCNVector3(0, 0.16 + storyHeight - 0.07, -length / 2)
-            parts.addChildNode(shelfNode)
+            let shelf = plushBox(width - 0.08, 0.14, length - 0.2, round: 0.05)
+            shelf.materials = [trim, trimLong, trim, trimLong, plush, trim]
+            put(shelf, at: SCNVector3(0, floor0 + storyHeight - 0.07, -length / 2), into: parts)
         }
 
-        // Sisal posts down both sides, floor to roof.
-        let postHeight = CGFloat(roofTop - 0.3)
-        let post = SCNCylinder(radius: 0.13, height: postHeight)
-        let rope = sisal.copy() as! SCNMaterial
-        rope.diffuse.contentsTransform = SCNMatrix4MakeScale(2, Float(postHeight) * 1.5, 1)
-        post.materials = [rope, carpetSide, carpetSide]
+        // Thick sisal-wrapped posts down both sides, floor to roof, one pair at
+        // each bay line. Twelve sides each: the rope picture does the rounding.
+        let post = SCNCylinder(radius: 0.15, height: CGFloat(postHeight))
+        post.radialSegmentCount = 12
+        post.materials = [rope, trim, trim]
         let bays = max(2, Int((length / 3.2).rounded()))
+        let bayLength = (length - 0.7) / Float(bays)
+        func bayZ(_ i: Int) -> Float { -0.35 - (Float(i) + 0.5) * bayLength }
         for i in 0...bays {
-            let z = -0.35 - Float(i) * (length - 0.7) / Float(bays)
+            let z = -0.35 - Float(i) * bayLength
             for x: Float in [-0.72, 0.72] {
-                let p = SCNNode(geometry: post)
-                p.position = SCNVector3(x, 0.16 + Float(postHeight) / 2, z)
-                parts.addChildNode(p)
+                put(post, at: SCNVector3(x, floor0 + postHeight / 2, z), into: parts)
             }
         }
 
-        // Cubbies in every other bay, each with a dark round doorway facing the cat.
-        // On a tall tree the upper story's cubbies sit in the bays between the
-        // lower ones, so the front shows one low and one high doorway.
+        // Condos. A short tree has one in every other bay. A tall tree's front
+        // bay is a condo on both stories, so its face is a solid wall; behind
+        // that the stories alternate, so the side shows a checkerboard of
+        // condos and open bays with hammocks and tunnels in them.
+        func hasCubby(_ story: Int, _ i: Int) -> Bool {
+            if story == 1 && i == 0 { return true }
+            return i % 2 == story
+        }
         let cubbyHeight = storyHeight * 0.7
-        let cubby = SCNBox(width: 1.25, height: CGFloat(cubbyHeight), length: 1.3, chamferRadius: 0.12)
-        cubby.materials = [carpetSide]
-        let hole = SCNCylinder(radius: CGFloat(min(0.36, cubbyHeight * 0.33)), height: 0.02)
-        let holeMat = SCNMaterial()
-        holeMat.diffuse.contents = UIColor(red: 0.20, green: 0.13, blue: 0.10, alpha: 1)
-        holeMat.lightingModel = .constant
-        hole.materials = [holeMat]
+        let cubby = plushBox(1.25, cubbyHeight, 1.5, round: 0.12)
+        cubby.materials = [plush]
+        let holeR = min(0.36, cubbyHeight * 0.33)
+        // A round porthole with a rolled cream rim, or an arched doorway.
+        let disc = SCNCylinder(radius: CGFloat(holeR), height: 0.02)
+        disc.radialSegmentCount = 16
+        disc.materials = [hole]
+        let ring = SCNTorus(ringRadius: CGFloat(holeR), pipeRadius: 0.055)
+        ring.ringSegmentCount = 18
+        ring.pipeSegmentCount = 6
+        ring.materials = [cream]
+        let arch = archShape(width: CGFloat(holeR * 1.7), height: CGFloat(cubbyHeight * 0.72))
+        arch.materials = [hole]
+        // Cat ears on the porthole condos, in the gap under the next floor.
+        let ear = earShape(0.28)
+        ear.materials = [plush]
+        let innerEar = earShape(0.15)
+        innerEar.materials = [cream]
+        let faceDown = SCNVector3(Float.pi / 2, 0, 0)
+        var cubbyCount = 0
         for story in 0..<stories {
-            let floor = 0.16 + Float(story) * storyHeight
-            for i in stride(from: story, to: bays, by: 2) {
-                let z = -0.35 - (Float(i) + 0.5) * (length - 0.7) / Float(bays)
-                let c = SCNNode(geometry: cubby)
-                c.position = SCNVector3(0, floor + cubbyHeight / 2, z)
-                parts.addChildNode(c)
-                // The doorway goes straight on `parts`, not inside the cubby: the
-                // merge kept only its own offset, so as a grandchild it ended up
-                // half sunk in the road in front of the tree.
-                let h = SCNNode(geometry: hole)
-                h.eulerAngles.x = .pi / 2
-                h.position = SCNVector3(0, floor + cubbyHeight / 2 - 0.05, z + 0.66)
-                parts.addChildNode(h)
+            let floor = floor0 + Float(story) * storyHeight
+            for i in 0..<bays where hasCubby(story, i) {
+                let z = bayZ(i)
+                let mid = floor + cubbyHeight / 2
+                let face = z + 0.75
+                put(cubby, at: SCNVector3(0, mid, z), into: parts)
+                if cubbyCount % 2 == 0 {
+                    put(disc, at: SCNVector3(0, mid - 0.05, face + 0.01), tilt: faceDown, into: parts)
+                    put(ring, at: SCNVector3(0, mid - 0.05, face), tilt: faceDown, into: parts)
+                    for x: Float in [-0.4, 0.4] {
+                        put(ear, at: SCNVector3(x, floor + cubbyHeight - 0.03, face - 0.3), into: parts)
+                        put(innerEar, at: SCNVector3(x, floor + cubbyHeight, face - 0.29), into: parts)
+                    }
+                } else {
+                    put(arch, at: SCNVector3(0, floor + cubbyHeight * 0.1, face + 0.01), into: parts)
+                }
+                cubbyCount += 1
+            }
+        }
+
+        // Open bays take turns: a hammock slung between the posts, a carpet
+        // tunnel on the floor (a lookout tube on a tall tree's upper story), or
+        // a sisal scratch board leaning up the outer side with cream steps.
+        // All of it stays under the roof and inside the lane.
+        var openCount = 0
+        for story in 0..<stories {
+            let floor = floor0 + Float(story) * storyHeight
+            for i in 0..<bays where !hasCubby(story, i) {
+                let z = bayZ(i)
+                switch openCount % 3 {
+                case 0:
+                    let hammock = hammockShape(span: 1.46, sag: 0.3, depth: 1.0)
+                    hammock.materials = [toy]
+                    put(hammock, at: SCNVector3(0, floor + storyHeight * 0.62, z), into: parts)
+                case 1:
+                    if story == 1 {
+                        let tube = SCNTube(innerRadius: 0.30, outerRadius: 0.37, height: CGFloat(storyHeight * 0.7))
+                        tube.radialSegmentCount = 14
+                        tube.materials = [toy]
+                        put(tube, at: SCNVector3(0, floor + storyHeight * 0.35, z), into: parts)
+                        let window = SCNCylinder(radius: 0.17, height: 0.02)
+                        window.radialSegmentCount = 12
+                        window.materials = [hole]
+                        put(window, at: SCNVector3(0, floor + storyHeight * 0.42, z + 0.37), tilt: faceDown, into: parts)
+                    } else {
+                        let tunnel = SCNTube(innerRadius: 0.34, outerRadius: 0.42, height: 1.4)
+                        tunnel.radialSegmentCount = 14
+                        tunnel.materials = [toy]
+                        put(tunnel, at: SCNVector3(0, floor + 0.42, z), tilt: faceDown, into: parts)
+                    }
+                default:
+                    let side: Float = openCount % 2 == 0 ? 1 : -1
+                    let x = side * 0.86
+                    let run = bayLength * 0.62
+                    let rise = storyHeight * 0.82
+                    // Tipping a standing box about x by theta leans its top toward +z (the front).
+                    let theta = atan(run / rise)
+                    let lean = SCNVector3(theta, 0, 0)
+                    let board = SCNBox(width: 0.14, height: CGFloat((run * run + rise * rise).squareRoot()), length: 0.06, chamferRadius: 0.01)
+                    board.materials = [rope]
+                    put(board, at: SCNVector3(x, floor + rise / 2, z), tilt: lean, into: parts)
+                    let step = SCNBox(width: 0.16, height: 0.05, length: 0.1, chamferRadius: 0.01)
+                    step.materials = [cream]
+                    for k in 1...4 {
+                        // Along the board, then out along the face that looks up.
+                        let t = Float(k) / 5 - 0.5
+                        put(step, at: SCNVector3(x, floor + rise / 2 + t * rise + 0.04 * sin(theta), z + t * run - 0.04 * cos(theta)),
+                            tilt: lean, into: parts)
+                    }
+                }
+                openCount += 1
             }
         }
         // The look goes on before merging. A merged mesh starts with no materials
@@ -2427,32 +2626,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         applyLook(to: parts)
         root.addChildNode(parts.flattenedClone())
 
-        // A pom-pom toy swinging off the front corner, like the 2D art.
-        let string = SCNCylinder(radius: 0.012, height: 0.55)
-        let stringMat = SCNMaterial()
-        stringMat.diffuse.contents = UIColor(red: 0.95, green: 0.35, blue: 0.45, alpha: 1)
-        string.materials = [stringMat]
-        let pomMat = SCNMaterial()
-        pomMat.diffuse.contents = UIColor(red: 0.98, green: 0.30, blue: 0.55, alpha: 1)
-        pomMat.lightingModel = .lambert
-        let pom = SCNSphere(radius: 0.14)
-        pom.materials = [pomMat]
-        let hanger = SCNNode()
-        hanger.position = SCNVector3(0.7, roofTop - 0.26, -0.3)
-        let stringNode = SCNNode(geometry: string)
-        stringNode.position = SCNVector3(0, -0.275, 0)
-        hanger.addChildNode(stringNode)
-        let pomNode = SCNNode(geometry: pom)
-        pomNode.position = SCNVector3(0, -0.6, 0)
-        hanger.addChildNode(pomNode)
-        hanger.runAction(.repeatForever(.sequence([
-            .rotateTo(x: 0, y: 0, z: 0.35, duration: 0.6, usesShortestUnitArc: true),
-            .rotateTo(x: 0, y: 0, z: -0.35, duration: 0.6, usesShortestUnitArc: true)
-        ])))
-        root.addChildNode(hanger)
+        // Toys swinging under the roof's edge, beside the first and last bays and
+        // outside the ride: a pom-pom at the front, a toy mouse or a feather at
+        // the back. Two moving nodes per tree, each one merged mesh.
+        root.addChildNode(hangingToy("pom", color: toy, at: SCNVector3(0.78, roofTop - roofThick, -0.9), swing: 0.65))
+        root.addChildNode(hangingToy(pick % 2 == 0 ? "mouse" : "feather", color: toy,
+                                     at: SCNVector3(-0.78, roofTop - roofThick, -length + 0.9), swing: 0.8))
 
         // A soft shadow the length of the tree.
-        let shade = SCNNode(geometry: groundPlane(width: width + 0.7, length: L + 0.8, material: shadowMaterial))
+        let shade = SCNNode(geometry: groundPlane(width: CGFloat(width) + 0.7, length: CGFloat(length) + 0.8, material: shadowMaterial))
         shade.position = SCNVector3(0, 0.025, -length / 2)
         shade.castsShadow = false
         root.addChildNode(shade)
@@ -2461,14 +2643,75 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return root
     }
 
+    /// A toy on a string under a roof's edge. The string and the toy are merged
+    /// into one mesh on a pivot that rocks; `swing` is the seconds for one side,
+    /// so two toys on one tree don't move in step.
+    private func hangingToy(_ kind: String, color: SCNMaterial, at pivot: SCNVector3, swing: Double) -> SCNNode {
+        let hanger = SCNNode()
+        hanger.position = pivot
+        let bits = SCNNode()
+        let drop: Float = 0.55
+        let string = SCNCylinder(radius: 0.012, height: CGFloat(drop))
+        string.radialSegmentCount = 6
+        put(string, color, at: SCNVector3(0, -drop / 2, 0), into: bits)
+        switch kind {
+        case "mouse":
+            // A gray felt mouse hanging by its tail, nose down, ears and nose in the toy color.
+            let felt = plainMaterial((0.64, 0.62, 0.66))
+            let body = SCNCapsule(capRadius: 0.09, height: 0.3)
+            body.radialSegmentCount = 10
+            body.capSegmentCount = 6
+            put(body, felt, at: SCNVector3(0, -drop - 0.15, 0), into: bits)
+            let earBall = SCNSphere(radius: 0.05)
+            earBall.segmentCount = 8
+            for x: Float in [-0.07, 0.07] {
+                put(earBall, color, at: SCNVector3(x, -drop - 0.21, 0.05), into: bits)
+            }
+            let nose = SCNSphere(radius: 0.03)
+            nose.segmentCount = 6
+            put(nose, color, at: SCNVector3(0, -drop - 0.31, 0), into: bits)
+        case "feather":
+            // A white feather on a bell, tip down.
+            let white = plainMaterial((0.98, 0.98, 0.96))
+            let quill = SCNCone(topRadius: 0, bottomRadius: 0.07, height: 0.34)
+            quill.radialSegmentCount = 8
+            put(quill, white, at: SCNVector3(0, -drop - 0.2, 0), tilt: SCNVector3(Float.pi, 0, 0), into: bits)
+            let bell = SCNSphere(radius: 0.05)
+            bell.segmentCount = 8
+            put(bell, color, at: SCNVector3(0, -drop, 0), into: bits)
+        default:
+            // The pom-pom from the 2D art, with a smaller fluff ball beside it.
+            let pom = SCNSphere(radius: 0.15)
+            pom.segmentCount = 10
+            put(pom, color, at: SCNVector3(0, -drop - 0.1, 0), into: bits)
+            let fluff = SCNSphere(radius: 0.08)
+            fluff.segmentCount = 8
+            put(fluff, color, at: SCNVector3(0.1, -drop - 0.22, 0.06), into: bits)
+        }
+        applyLook(to: bits)
+        hanger.addChildNode(bits.flattenedClone())
+        hanger.runAction(.repeatForever(.sequence([
+            .rotateTo(x: 0, y: 0, z: 0.25, duration: swing, usesShortestUnitArc: true),
+            .rotateTo(x: 0, y: 0, z: -0.25, duration: swing, usesShortestUnitArc: true)
+        ])))
+        return hanger
+    }
+
     // MARK: - Ramp
+
+    // Ramps share their materials: dark sand carpet on the sides, cream steps.
+    // The slope itself is the roof carpet, so the paw prints lead up it.
+    private lazy var rampSide: SCNMaterial = carpet(carpetSide, tint: Self.sandTint, shade: 0.8)
+    private lazy var rampStep: SCNMaterial = carpet(carpetSide, tint: Self.creamTint)
 
     /// A carpeted ramp up to a tree's roof: a solid wedge from the road at its foot
     /// (z = +length) to the roof's height at its top (z = 0), where it meets the
     /// tree's front. It's added as a child of the tree's node, so it moves with it.
-    /// Sisal rope runs along both top edges so it reads as cat furniture, not a
-    /// road. The wedge is cut into short slices along its length so the
+    /// A sisal scratch-pad runner goes up the middle with cream steps across it,
+    /// and sisal rope runs along both top edges, so it reads as cat furniture,
+    /// not a road. The wedge is cut into short slices along its length so the
     /// curved-world bend bends it with the road. Merged into one mesh like a tree.
+    /// The slope is the gameplay (topAtCat reads it); the steps are 5 cm of trim.
     private func makeRamp(length: Float, roof: Float) -> SCNNode {
         let root = SCNNode()
         let parts = SCNNode()
@@ -2486,6 +2729,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var uvs: [CGPoint] = []
         var top: [UInt16] = []
         var sides: [UInt16] = []
+        var runner: [UInt16] = []
         func add(_ p: SCNVector3, _ n: SCNVector3, _ uv: CGPoint) -> UInt16 {
             verts.append(p)
             normals.append(n)
@@ -2502,6 +2746,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let p2 = add(SCNVector3(w / 2, b.y, b.z), upN, CGPoint(x: 1, y: CGFloat(b.along / w)))
             let p3 = add(SCNVector3(-w / 2, b.y, b.z), upN, CGPoint(x: 0, y: CGFloat(b.along / w)))
             top += [p0, p3, p2, p0, p2, p1]
+        }
+        // The sisal runner: a strip up the middle, a hair above the carpet so it
+        // never flickers through it, with the rope's wraps lying across it.
+        let lift = SCNVector3(up.x * 0.012, up.y * 0.012, up.z * 0.012)
+        let rw: Float = 0.26
+        for i in 0..<slices {
+            let a = station(i), b = station(i + 1)
+            let r0 = add(SCNVector3(-rw + lift.x, a.y + lift.y, a.z + lift.z), upN, CGPoint(x: 0, y: CGFloat(a.along * 1.5)))
+            let r1 = add(SCNVector3(rw + lift.x, a.y + lift.y, a.z + lift.z), upN, CGPoint(x: 1, y: CGFloat(a.along * 1.5)))
+            let r2 = add(SCNVector3(rw + lift.x, b.y + lift.y, b.z + lift.z), upN, CGPoint(x: 1, y: CGFloat(b.along * 1.5)))
+            let r3 = add(SCNVector3(-rw + lift.x, b.y + lift.y, b.z + lift.z), upN, CGPoint(x: 0, y: CGFloat(b.along * 1.5)))
+            runner += [r0, r3, r2, r0, r2, r1]
         }
         // The two sides: carpet, tiled like the sides of a tree's roof.
         for side: Float in [-1, 1] {
@@ -2529,18 +2785,30 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: normals),
                       SCNGeometrySource(textureCoordinates: uvs)],
             elements: [SCNGeometryElement(indices: top, primitiveType: .triangles),
-                       SCNGeometryElement(indices: sides, primitiveType: .triangles)])
-        // The plain carpet materials repeat, and the coordinates above already say
-        // how many times, so every ramp shares the same two materials.
-        wedge.materials = [carpetTop, carpetSide]
+                       SCNGeometryElement(indices: sides, primitiveType: .triangles),
+                       SCNGeometryElement(indices: runner, primitiveType: .triangles)])
+        // The shared materials repeat, and the coordinates above already say how
+        // many times, so every ramp draws with the same three.
+        wedge.materials = [carpetTop, rampSide, sisal]
         parts.addChildNode(SCNNode(geometry: wedge))
+
+        // Cream steps across the runner at every slice, like the cleats on a cat
+        // ramp. Each is tipped to lie on the slope.
+        let tilt = atan(roof / length)
+        let step = SCNBox(width: 1.1, height: 0.05, length: 0.12, chamferRadius: 0.015)
+        step.materials = [rampStep]
+        for i in 1..<slices {
+            let s = station(i)
+            put(step, at: SCNVector3(0, s.y + up.y * 0.03, s.z + up.z * 0.03), tilt: SCNVector3(tilt, 0, 0), into: parts)
+        }
 
         // Sisal rope along both top edges, from the foot up to the roof.
         let ropeMat = sisal.copy() as! SCNMaterial
         ropeMat.diffuse.contentsTransform = SCNMatrix4MakeScale(1, slope * 1.5, 1)
         let edge = SCNCylinder(radius: 0.08, height: CGFloat(slope))
         edge.heightSegmentCount = slices
-        edge.materials = [ropeMat, carpetSide, carpetSide]
+        edge.radialSegmentCount = 12
+        edge.materials = [ropeMat, rampSide, rampSide]
         for x in [-w / 2 + 0.05, w / 2 - 0.05] {
             let e = SCNNode(geometry: edge)
             // A cylinder stands along y. Tip it forward to lie along the slope.
