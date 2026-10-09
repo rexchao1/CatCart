@@ -2004,10 +2004,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if let model = coyoteModel {
             let node = SCNNode()
             let coyote = model.clone()
+            // Every coyote is its own animal: a touch bigger or smaller, its own
+            // stride rate, its gallop started partway through, so a pack never
+            // runs in step. 1.14 m tall at 1.0; the low thing is at 1.38 m, so
+            // 5% either way still fits under it.
+            let size = Float.random(in: 0.95...1.05)
+            coyote.scale = SCNVector3(size, size, size)
             // The saved model may change size. Keep its nose on the item's
             // front edge, where contact is measured, using its actual bounds.
             let bounds = coyote.boundingBox
-            coyote.position = SCNVector3(0, 0, -bounds.max.z)
+            coyote.position = SCNVector3(0, 0, -bounds.max.z * size)
+            desyncGallop(coyote)
+            addBodyBob(coyote)
+            aimHeadAtCat(coyote)
             node.addChildNode(coyote)
             applyLook(to: node)
             let shadow = shadowNode(width: 1.0, length: 2.2)
@@ -2031,6 +2040,51 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         applyLook(to: node)
         node.addChildNode(shadowNode(width: 1.8, length: 1.3))
         return node
+    }
+
+    /// Restarts every "run" animation on one coyote from a random point in the
+    /// stride, at its own pace, so clones stop galloping in lockstep. The gallop
+    /// is saved in coyote_run.scn as one looping player per moving part (see
+    /// scripts/build_game_pickup.swift), and all the parts of one coyote get the
+    /// same offset and speed so it stays one animal. The pace spread also keeps
+    /// two coyotes from drifting back into step later in a run.
+    private func desyncGallop(_ coyote: SCNNode) {
+        let offset = TimeInterval.random(in: 0..<0.45)
+        let pace = CGFloat.random(in: 0.9...1.1)
+        coyote.enumerateHierarchy { part, _ in
+            guard let player = part.animationPlayer(forKey: "run"),
+                  let animation = player.animation.copy() as? SCNAnimation else { return }
+            animation.timeOffset = offset
+            let own = SCNAnimationPlayer(animation: animation)
+            own.speed = pace
+            part.removeAnimation(forKey: "run")
+            part.addAnimationPlayer(own, forKey: "run")
+        }
+    }
+
+    /// A faint extra rise and fall at a period that doesn't divide the 0.45 s
+    /// stride, so no two coyotes settle into the same rhythm. It runs on the
+    /// clone itself, under the pool node, so the pool can keep it forever.
+    private func addBodyBob(_ coyote: SCNNode) {
+        let lift: CGFloat = 0.025
+        let half = TimeInterval.random(in: 0.29...0.37)
+        let up = SCNAction.moveBy(x: 0, y: lift, z: 0, duration: half)
+        up.timingMode = .easeInEaseOut
+        let down = SCNAction.moveBy(x: 0, y: -lift, z: 0, duration: half)
+        down.timingMode = .easeInEaseOut
+        coyote.runAction(.repeatForever(.sequence([up, down])), forKey: "bob")
+    }
+
+    /// The head leans a little toward the cat, so a coyote in the next lane
+    /// looks across at her instead of straight down the road. The gallop's head
+    /// bob stays: the constraint only pulls the animated pose part way to her.
+    private func aimHeadAtCat(_ coyote: SCNNode) {
+        guard let head = coyote.childNode(withName: "head", recursively: true), let target = catNode else { return }
+        let look = SCNLookAtConstraint(target: target)
+        look.localFront = SCNVector3(0, 0, 1) // the model faces +z, toward the camera
+        look.isGimbalLockEnabled = true // turn and nod, never roll the head
+        look.influenceFactor = 0.3
+        head.constraints = [look]
     }
 
     private func makeFood() -> SCNNode {

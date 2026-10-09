@@ -50,6 +50,8 @@ In the game the cart is 3D (`CatCart/KittenCart.swift`): cardboard walls, the lo
 
 Coyotes replace crates and flower pots. They look dangerous: lean, ragged, bared teeth, amber eyes. Their faces move (snarl cycle). You jump over them. You do not land on them.
 
+The coyote is scrappy, not a smooth toy (revision 2, 2026-10-09, after Rex asked for the animations and the coyotes to be as good as possible): a ragged neck ruff and hackles, a bushy low tail with a black tip, big pointed ears pinned back, a long snout with black lips curled off two big fangs, a dark eye mask with amber eyes and a glint, and a coat that goes grizzled gray-brown on the back, cream on the throat and belly, rust on the legs and ears. It runs a rotary gallop: the hinds land, then the fronts, then it stretches out in the air; the body rises and pitches, the head steadies against it, the ears flutter, the tail streams in two links, and the jaw snaps shut once a stride. No two coyotes run in step: each clone starts its gallop at its own point in the stride, at its own pace (within 10%), with its own faint bob and a size within 5% of 1.14 m, and its head leans a little toward the cat.
+
 Pots are gone. Do not bring them back unless Rex asks.
 
 Low things are the duck obstacles (Rex's call, 2026-10-04). One per world, each built in code in `makeLowThing` in `GameScene.swift`: a striped construction scaffold in the city, a mossy log on two stumps in the jungle, a table with a red gingham cloth in the house, a clothesline with a blue sheet on the farm. Each fills one lane, has open space under it down to the road, a shadow strip on the road, and its bottom edge at 1.38 m, between her ducked head (about 1.25 m) and her sitting head (about 1.68 m). Coyotes stay jump-only; there is no leaping coyote.
@@ -60,7 +62,7 @@ The chaser is a green plastic spray bottle with a white trigger head, built in c
 
 Yarn is gone. Collectibles are small cans of wet cat food, big enough to read as food. Some hang in the air over a coyote, at jump height (2.0 m), with no shadow; only a jump reaches them. The current can has a turquoise wrap, white salmon symbol, open silver lid, and visible salmon in gravy. The turquoise distinguishes it from the tan and brown coyotes.
 
-The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`. Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
+The food source is `art/models/food/wet-food.blend`; the coyote source is `art/models/coyote/coyote.blend`, built by `scripts/blender/make_coyote_v2.py` (revision 2, 2026-10-09; revision 1 is `art/options/coyote/coyote-v1.blend`, its renders in `art/options/coyote/blender-study`, and the new renders in `art/options/coyote/v2`). Run `scripts/build_art.sh` after editing them. It exports lightweight meshes into `wet_food.scn` and `coyote_run.scn`, embeds the food label, and gives the coyote a gallop and snapping jaw. The render-only fur and studio stay out of the game. `swift scripts/check_game_art.swift` checks the exports and renders previews. The old coyote is saved in `art/options/coyote/coyote-original.scn`.
 
 ### Cat trees
 
@@ -243,7 +245,7 @@ This is the live game, not a wish list.
 - Curved-world road with fog into a painted sky. Three lanes, arc jump and slam.
 - 3D kitten with real-time fur in a 3D La Croix cart: wheels spin, tail sways, ears flick, eyes blink, head leans into turns. On the home screen she tilts her head at you, breathes, and gives slow blinks.
 - Four power-ups on the road: Fizz Rocket (fly through a food trail), Can Magnet, Pounce Springs (high jumps), Nine Lives (one saved crash), with a callout and timer badges.
-- 3D coyotes with a looping gallop and snapping jaw. Jumpable.
+- 3D coyotes with a looping rotary gallop and snapping jaw, each clone on its own beat, size, and pace, head turned a little toward the cat. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
 - Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
@@ -258,7 +260,6 @@ This is the live game, not a wish list.
 Known gaps against this PRD:
 
 - The kitten has no jump pose; she rides the arc sitting.
-- Coyotes gallop in step with each other.
 - No sound.
 
 ---

@@ -53,6 +53,6 @@ Model weights at the start: kitten 23K triangles in 8 parts, coyote 24K in 30 an
 ## Open
 
 - Phone check: plug in the iPhone, run from Xcode with the `CATCART_PERF=1` environment variable in the scheme, play a run, and read the `CATCART` lines in the console. The simulator uses the Mac's graphics chip, so it can't show heat or GPU limits.
-- Each coyote is now 30 animated pieces (about 60 draw calls with its shadow), the biggest cost left on a busy screen.
+- Each coyote was 30 animated pieces (about 60 draw calls with its shadow), the biggest cost left on a busy screen. The revision 2 coyote (2026-10-09, `coyote-blender-model.md`) has 15 moving parts but only 20 geometry groups, since the whole hide, nose, lips, claws and ear skin share one vertex-colored material and the joint balls merged into the upper legs: about 40 draw calls with its shadow. It also carries a per-clone `SCNLookAtConstraint` on the head and a tiny bob action, both cheap on paper and not yet measured; the phone check decides.
 
 - The game slows its clock when a frame runs past 1/30 s, so a hitch reads as slow motion. Left alone unless the log shows it matters.

@@ -10,6 +10,8 @@ struct Material: Decodable {
     let metallic: CGFloat
     let texture: String?
     let vertexColor: Bool
+    /// Linear light the surface gives off on its own (the coyote's amber eyes).
+    let emission: [CGFloat]?
 }
 struct Part: Decodable {
     let name: String
@@ -47,6 +49,9 @@ for entry in asset.materials {
         m.diffuse.contents=image // NSImage is embedded in the SceneKit archive.
         m.diffuse.mipFilter = .linear;m.diffuse.minificationFilter = .linear;m.diffuse.magnificationFilter = .linear
         m.diffuse.maxAnisotropy=8
+    }
+    if let glow=entry.emission, glow.count>=3 {
+        m.emission.contents=NSColor(srgbRed:srgb(glow[0]),green:srgb(glow[1]),blue:srgb(glow[2]),alpha:1)
     }
     m.specular.contents=NSColor(white:entry.metallic > 0.2 ? 0.65 : 0.18,alpha:1)
     m.shininess=max(0.05,1-entry.roughness)

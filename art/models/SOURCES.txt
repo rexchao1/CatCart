@@ -33,7 +33,7 @@ Rebuild: scripts/fetch_models.sh [download-dir]. The exact model list and color
 remaps live in that script.
 
 3D coyote (CatCart/Models/coyote_run.scn): modeled from scratch in Blender by
-scripts/blender/make_coyote.py. No downloaded mesh. Visual reference only (proportions
+scripts/blender/make_coyote_v2.py (earlier takes: make_coyote_study.py, make_coyote.py). No downloaded mesh. Visual reference only (proportions
 and coat colors), not copied into the model or shipped:
   "Coyote near Madison" (Yellowstone National Park, 2016-11-10)
   https://commons.wikimedia.org/wiki/File:Coyote_near_Madison_(33669196931).jpg
