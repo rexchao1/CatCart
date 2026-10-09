@@ -773,6 +773,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         camera.fieldOfView = baseFOV
         camera.zNear = 0.3
         camera.zFar = 260
+        // A little post-processing for the punchy Subway Surfers look: a soft bloom
+        // on the brightest spots, slightly richer color, and a faint vignette.
+        // HDR rendering adds a pass or two on the phone. Set `effects` false if a
+        // run makes the phone warm or CATCART_PERF=1 shows longer frames.
+        let effects = true
+        if effects {
+            camera.wantsHDR = true
+            // No auto-exposure: the picture must not brighten and dim as scenery passes.
+            camera.wantsExposureAdaptation = false
+            camera.exposureOffset = 0
+            camera.bloomIntensity = 0.3
+            camera.bloomThreshold = 0.85
+            camera.bloomBlurRadius = 8
+            camera.saturation = 1.1
+            camera.contrast = 0.04
+            camera.vignettingIntensity = 0.28
+            camera.vignettingPower = 1.2
+        }
         cameraNode.camera = camera
         cameraNode.position = SCNVector3(0, cameraHeight, cameraBack)
         cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, 0)
@@ -979,16 +997,21 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     // MARK: - Worlds
 
+    /// Each world's light. The fog color is also the bottom of its sky picture
+    /// (HORIZON in scripts/make_3d_textures.py), so keep the two the same. The sun
+    /// is warm and the ambient takes the color of what's around (blue shade in
+    /// the city, green bounce in the jungle, cream walls indoors, open sky on the
+    /// farm), which is what makes a sunlit cartoon look rich instead of flat.
     private func look(_ world: WorldKind) -> WorldLook {
         switch world {
         case .city:
-            return WorldLook(sky: "skyCity", fog: Self.rgb(0xF2C9A5), sun: SIMD3(1.0, 0.93, 0.82), ambient: SIMD3(0.62, 0.60, 0.66))
+            return WorldLook(sky: "skyCity", fog: Self.rgb(0xF2C9A5), sun: SIMD3(1.0, 0.91, 0.78), ambient: SIMD3(0.58, 0.58, 0.70))
         case .jungle:
-            return WorldLook(sky: "skyJungle", fog: Self.rgb(0xCFD89E), sun: SIMD3(1.0, 0.96, 0.80), ambient: SIMD3(0.55, 0.64, 0.55))
+            return WorldLook(sky: "skyJungle", fog: Self.rgb(0xCFD89E), sun: SIMD3(1.0, 0.98, 0.84), ambient: SIMD3(0.50, 0.66, 0.52))
         case .house:
-            return WorldLook(sky: "skyHouse", fog: Self.rgb(0xF3E2C6), sun: SIMD3(1.0, 0.92, 0.80), ambient: SIMD3(0.70, 0.64, 0.58))
+            return WorldLook(sky: "skyHouse", fog: Self.rgb(0xF3E2C6), sun: SIMD3(1.0, 0.93, 0.82), ambient: SIMD3(0.74, 0.66, 0.58))
         case .farm:
-            return WorldLook(sky: "skyFarm", fog: Self.rgb(0xCDE7F6), sun: SIMD3(1.0, 0.97, 0.88), ambient: SIMD3(0.60, 0.64, 0.70))
+            return WorldLook(sky: "skyFarm", fog: Self.rgb(0xCDE7F6), sun: SIMD3(1.0, 0.97, 0.86), ambient: SIMD3(0.60, 0.68, 0.76))
         }
     }
 

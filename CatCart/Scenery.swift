@@ -494,7 +494,29 @@ final class SceneryLibrary {
             for k in [1, 3] {
                 let lz = -q * Float(k) + r.f(-0.5, 0.5)
                 placeFacing(b, "street_lamp", side: side, x: 3.75, y: 0.16, z: lz, s: 8)
-                if r.chance(0.5) { hydrant(b, x: side * 3.8, z: lz + 1.6) }
+                if r.chance(0.5) {
+                    hydrant(b, x: side * 3.8, z: lz + 1.6)
+                    // A yellow-painted stretch of curb by the hydrant.
+                    b.box(SIMD3(side > 0 ? 3.0 : -3.3, 0.2, lz + 0.5), SIMD3(side > 0 ? 3.3 : -3.0, 0.215, lz + 2.6),
+                          rgb(0xF2C63C))
+                }
+            }
+            // More street life, one piece per side: a mailbox, a trash can, a bus stop,
+            // cones around a dumpster, or another tree. All on the sidewalk.
+            let extraZ = -q * Float(r.int(3) + 1) + r.f(-1.5, 1.5)
+            switch r.int(6) {
+            case 0: mailbox(b, side: side, x: 4.6, z: extraZ)
+            case 1: trashCan(b, x: side * 4.5, z: extraZ)
+            case 2: busStop(b, side: side, x: 5.2, z: extraZ, r: &r)
+            case 3:
+                let ds = min(8, 1.4 / max(radius("street_dumpster", 1), 0.01))
+                placeFacing(b, "street_dumpster", side: side, x: front - 1.1, y: 0.16, z: extraZ, s: ds)
+                for k in 0..<2 {
+                    place(b, "street_cone", x: side * r.f(3.6, 4.2), y: 0.16, z: extraZ + Float(k) * 0.9 - 0.4, s: 8,
+                          yaw: r.f(0, 6.28))
+                }
+            case 4: planterTree(b, x: side * 4.4, z: extraZ, r: &r)
+            default: break
             }
             for zc in [-2 * q, -L + 1.2] {
                 switch r.int(4) {
@@ -544,6 +566,42 @@ final class SceneryLibrary {
         b.frustum(r0: 0.2, r1: 0.2, h: 0.6, sides: 8, red, _: translate(x, 0.28, z))
         b.frustum(r0: 0.22, r1: 0.05, h: 0.22, sides: 8, cap, _: translate(x, 0.88, z))
         b.box(SIMD3(-0.34, 0.5, -0.07), SIMD3(0.34, 0.64, 0.07), red, translate(x, 0.16, z))
+    }
+
+    /// A blue corner mailbox on two legs, its slot hood toward the road.
+    private func mailbox(_ b: MeshBuilder, side: Float, x: Float, z: Float) {
+        let blue = rgb(0x2F5FBF), dark = rgb(0x24467F)
+        let t = translate(side * x, 0.16, z) * rotateY(side > 0 ? -.pi / 2 : .pi / 2)
+        for lx: Float in [-0.22, 0.22] {
+            b.box(SIMD3(lx - 0.04, 0, -0.04), SIMD3(lx + 0.04, 0.5, 0.04), dark, t)
+        }
+        b.box(SIMD3(-0.36, 0.5, -0.3), SIMD3(0.36, 1.15, 0.3), blue, t)
+        b.box(SIMD3(-0.36, 1.15, -0.26), SIMD3(0.36, 1.3, 0.26), blue * 1.08, t)
+        b.box(SIMD3(-0.2, 0.95, 0.3), SIMD3(0.2, 1.08, 0.34), dark, t)
+    }
+
+    private func trashCan(_ b: MeshBuilder, x: Float, z: Float) {
+        let green = rgb(0x3E7C4A), lid = rgb(0x2E5E38)
+        b.frustum(r0: 0.3, r1: 0.34, h: 0.9, sides: 10, green, cap: lid, bottom: false, translate(x, 0.16, z))
+        b.frustum(r0: 0.37, r1: 0.3, h: 0.14, sides: 10, lid, cap: lid, bottom: false, translate(x, 1.06, z))
+    }
+
+    /// A bus shelter: steel posts, a glass back wall, a red roof, a bench, and a
+    /// round sign on a pole. Built in a frame where +z faces the road.
+    private func busStop(_ b: MeshBuilder, side: Float, x: Float, z: Float, r: inout SeededRandom) {
+        let steel = rgb(0x4A5560), glass = rgb(0xBFE4F2), roof = rgb(0xD8453A)
+        let t = translate(side * x, 0.16, z) * rotateY(side > 0 ? -.pi / 2 : .pi / 2)
+        for lx: Float in [-1.4, 1.4] {
+            b.box(SIMD3(lx - 0.06, 0, -0.7), SIMD3(lx + 0.06, 2.6, -0.58), steel, t)
+            b.box(SIMD3(lx - 0.06, 0, 0.58), SIMD3(lx + 0.06, 2.6, 0.7), steel, t)
+        }
+        b.box(SIMD3(-1.4, 0.3, -0.7), SIMD3(1.4, 2.4, -0.64), glass, t)
+        b.box(SIMD3(-1.55, 2.6, -0.85), SIMD3(1.55, 2.8, 0.85), roof, top: roof * 1.1, t)
+        b.box(SIMD3(-1.1, 0.45, -0.5), SIMD3(1.1, 0.55, -0.1), rgb(0xC8834A), t)
+        b.box(SIMD3(1.8, 0, -0.06), SIMD3(1.92, 3.2, 0.06), steel, t)
+        let sign = rgb(r.pick([0x3560C8, 0xE0457B, 0x2E9E55]))
+        b.frustum(r0: 0.32, r1: 0.32, h: 0.06, sides: 12, rgb(0xFFFFFF), cap: sign, bottom: true,
+                  t * translate(1.86, 3.2, 0) * rotateX(.pi / 2))
     }
 
     private func bench(_ b: MeshBuilder, side: Float, x: Float, z: Float) {
@@ -625,6 +683,15 @@ final class SceneryLibrary {
                 place(b, "jungle_log_large", x: side * r.f(4.4, 5.5), z: -r.f(len / 2 + 0.5, L - len / 2 - 0.5),
                       s: s, yaw: .pi / 2 + r.f(-0.2, 0.2))
             }
+            // Ferns, rocks, flowers, and now and then a pond with lily pads by the path.
+            for _ in 0..<(r.int(3) + 2) {
+                fern(b, x: side * r.f(3.6, 5.2), z: -r.f(0.6, L - 0.6), s: r.f(0.7, 1.2), r: &r)
+            }
+            scatter(b, &r, ["jungle_rock_largeA", "jungle_rock_largeC"], count: 2, side: side, x0: 3.6, x1: 7, L: L,
+                    s0: 2.5, s1: 4.5)
+            scatter(b, &r, ["jungle_flower_redA", "jungle_flower_yellowB", "jungle_flower_purpleA"], count: 4,
+                    side: side, x0: 3.5, x1: 5.5, L: L, s0: 3, s1: 4.5)
+            if r.chance(0.3) { pond(b, x: side * r.f(5.6, 7.0), z: -r.f(4, L - 4), r: &r) }
             // Mid layer: big trees and palms.
             scatter(b, &r, bigTrees, count: 4, side: side, x0: 6.5, x1: 10, L: L, s0: 7, s1: 10)
             scatter(b, &r, palms, count: 3, side: side, x0: 5.5, x1: 9, L: L, s0: 6.5, s1: 8.5)
@@ -646,6 +713,12 @@ final class SceneryLibrary {
             for s: Float in [-1, 1] {
                 b.frustum(r0: 0.75, r1: 0.55, h: y + 0.4, sides: 7, bark, _: translate(s * 7.5, 0, z))
                 b.blob(SIMD3(s * 7.5, y + 1.8, z), SIMD3(3.2, 2.2, 3.0), leafDark)
+                // Lianas hanging down the road side of each trunk.
+                for _ in 0..<3 {
+                    let vx = s * r.f(6.0, 6.7), vz = z + r.f(-0.8, 0.8)
+                    let top = y - r.f(0, 2), bottom = r.f(0.5, 3)
+                    b.box(SIMD3(vx - 0.05, bottom, vz - 0.05), SIMD3(vx + 0.05, top, vz + 0.05), rgb(0x4E7A2A))
+                }
             }
             b.box(SIMD3(-7.5, -0.35, -0.35), SIMD3(7.5, 0.35, 0.35), bark, top: bark * 1.1, translate(0, y, z))
             var x: Float = -6
@@ -659,6 +732,43 @@ final class SceneryLibrary {
                 }
                 x += r.f(1.4, 2.0)
             }
+        }
+    }
+
+    /// A fern: fronds arching out from a base, each a tapered blade drawn with
+    /// both windings so it shows from either side.
+    private func fern(_ b: MeshBuilder, x: Float, z: Float, s: Float, r: inout SeededRandom) {
+        let greens: [UInt32] = [0x3F9E3A, 0x55B24A, 0x2E8A34]
+        let fronds = 7
+        let a0 = r.f(0, 6.28)
+        for i in 0..<fronds {
+            let a = a0 + Float(i) / Float(fronds) * 2 * .pi + r.f(-0.2, 0.2)
+            let len = s * r.f(0.9, 1.4)
+            let dir = SIMD3<Float>(cos(a), 0, -sin(a))
+            let root = SIMD3<Float>(x, 0.05, z)
+            let mid = root + dir * (len * 0.5) + SIMD3<Float>(0, s * 0.55, 0)
+            let tip = root + dir * len + SIMD3<Float>(0, s * 0.35, 0)
+            let across = SIMD3<Float>(-dir.z, 0, dir.x) * (0.16 * s)
+            let c = rgb(greens[i % greens.count])
+            b.tri(root - across, mid + across, mid - across, c)
+            b.tri(root - across, root + across, mid + across, c)
+            b.tri(root - across, mid - across, mid + across, c * 0.85)
+            b.tri(root - across, mid + across, root + across, c * 0.85)
+            b.tri(mid - across, tip, mid + across, c)
+            b.tri(mid - across, mid + across, tip, c * 0.85)
+        }
+    }
+
+    /// A small pond: a mud rim, still water, lily pads, a flower or two.
+    private func pond(_ b: MeshBuilder, x: Float, z: Float, r: inout SeededRandom) {
+        let mud = rgb(0x6B4A2F), water = rgb(0x7FD2CC), pad = rgb(0x4FA83B), bloom = rgb(0xFF9FC7)
+        b.frustum(r0: 2.0, r1: 1.9, h: 0.05, sides: 14, mud, cap: mud, bottom: false, translate(x, 0, z))
+        b.frustum(r0: 1.7, r1: 1.6, h: 0.03, sides: 14, water, cap: water, bottom: false, translate(x, 0.05, z))
+        for _ in 0..<3 {
+            let a = r.f(0, 6.28), d = r.f(0.3, 1.2)
+            let px = x + cos(a) * d, pz = z + sin(a) * d
+            b.frustum(r0: 0.22, r1: 0.22, h: 0.02, sides: 8, pad, cap: pad, bottom: false, translate(px, 0.08, pz))
+            if r.chance(0.5) { b.blob(SIMD3(px, 0.16, pz), SIMD3(0.1, 0.08, 0.1), bloom, segments: 6, rings: 3) }
         }
     }
 
@@ -726,6 +836,7 @@ final class SceneryLibrary {
             for k in 0..<bays {
                 let zc = -0.5 - bw * (Float(k) + 0.5)
                 houseBay(b, &r, side: side, wallX: wallX, z: zc, width: bw, accent: lower)
+                if r.chance(0.7) { houseExtras(b, &r, side: side, wallX: wallX, z: zc + r.f(-1, 1)) }
                 if r.chance(0.55) {
                     picture(b, side: side, wallX: wallX, z: zc + r.f(-1, 1), y: 5.4, w: r.f(1.0, 1.6), h: 0.9, r: &r)
                 }
@@ -808,6 +919,57 @@ final class SceneryLibrary {
             }
             onFloor("house_loungeChair", x: 4.4, dz: -1.2, s: 2.5, yaw: side > 0 ? .pi / 2 + 0.5 : -.pi / 2 - 0.5)
             if r.chance(0.5) { onFloor("house_speaker", x: wallX - 0.6, dz: 2.3, s: 2.6, yaw: 0) }
+        }
+    }
+
+    /// Cat things and small clutter in a bay: a cat bed, food bowls, a scratching
+    /// post, toys on the floor, a wall clock, or a shelf of books.
+    private func houseExtras(_ b: MeshBuilder, _ r: inout SeededRandom, side: Float, wallX: Float, z: Float) {
+        let sisal = rgb(0xD9B36A), carpet = rgb(0xEBCFA0), dark = rgb(0x2F3A4A)
+        switch r.int(6) {
+        case 0: // Cat bed with a cushion.
+            let x = side * 4.0
+            let bed = rgb(r.pick([0x8CB8D8, 0xE8A0B0, 0xB8D8A0]))
+            b.frustum(r0: 0.5, r1: 0.55, h: 0.22, sides: 12, bed, cap: bed, bottom: false, translate(x, 0.02, z))
+            b.blob(SIMD3(x, 0.14, z), SIMD3(0.42, 0.1, 0.42), carpet, segments: 10, rings: 3)
+        case 1: // Food and water bowls on a mat by the wall.
+            let x = side * (wallX - 0.9)
+            b.box(SIMD3(x - 0.45, 0.012, z - 0.3), SIMD3(x + 0.45, 0.027, z + 0.3), rgb(0x7FD1C7))
+            b.frustum(r0: 0.16, r1: 0.2, h: 0.09, sides: 10, rgb(0xE8392F), cap: rgb(0x8A5A34), bottom: false,
+                      translate(x, 0.03, z - 0.22))
+            b.frustum(r0: 0.16, r1: 0.2, h: 0.09, sides: 10, rgb(0x3560C8), cap: rgb(0xBFE4F2), bottom: false,
+                      translate(x, 0.03, z + 0.22))
+        case 2: // A little scratching post.
+            let x = side * 4.2
+            b.box(SIMD3(x - 0.35, 0.02, z - 0.35), SIMD3(x + 0.35, 0.1, z + 0.35), carpet)
+            b.frustum(r0: 0.1, r1: 0.1, h: 0.9, sides: 8, sisal, cap: sisal, bottom: false, translate(x, 0.1, z))
+            b.frustum(r0: 0.26, r1: 0.26, h: 0.06, sides: 10, carpet, cap: carpet, bottom: false, translate(x, 1.0, z))
+        case 3: // Toys: a ball, a felt mouse with a string tail, stacked blocks.
+            let x = side * 3.9
+            let ball = rgb(r.pick([0xFF5A5F, 0x3EC1D3, 0xFFC93C]))
+            b.blob(SIMD3(x, 0.16, z), SIMD3(0.14, 0.14, 0.14), ball, segments: 8, rings: 4)
+            b.blob(SIMD3(x + side * 0.5, 0.1, z + 0.5), SIMD3(0.14, 0.08, 0.09), rgb(0x9A9A9A), segments: 7, rings: 3)
+            b.box(SIMD3(x + side * 0.5 - 0.01, 0.05, z + 0.58), SIMD3(x + side * 0.5 + 0.01, 0.07, z + 0.88), rgb(0xE8A0B0))
+            let blocks: [UInt32] = [0xE8392F, 0xFFD23F, 0x3560C8]
+            for (i, c) in blocks.enumerated() {
+                let bx = x + side * 0.9 + Float(i) * 0.02, by = 0.02 + Float(i) * 0.24
+                b.box(SIMD3(bx - 0.12, by, z - 0.82), SIMD3(bx + 0.12, by + 0.24, z - 0.58), rgb(c))
+            }
+        case 4: // Wall clock, face toward the hall.
+            let t = translate(side * (wallX - 0.04), 4.6, z) * rotateZ(side > 0 ? .pi / 2 : -.pi / 2)
+            b.frustum(r0: 0.42, r1: 0.42, h: 0.06, sides: 14, dark, cap: rgb(0xFFFFFF), bottom: true, t)
+            b.box(SIMD3(-0.02, 0.06, -0.02), SIMD3(0.02, 0.08, 0.26), dark, t)
+            b.box(SIMD3(-0.02, 0.06, -0.02), SIMD3(0.18, 0.08, 0.02), dark, t)
+        default: // A shelf with a row of books.
+            let x0 = side * (wallX - 0.3), x1 = side * wallX, inner = side * (wallX - 0.26)
+            b.box(SIMD3(min(x0, x1), 3.4, z - 0.8), SIMD3(max(x0, x1), 3.46, z + 0.8), rgb(0xC98B55))
+            let spines: [UInt32] = [0xE8392F, 0x3560C8, 0x2E9E55, 0xF08A24, 0x7A4FB8, 0xFFD23F]
+            var bz = z - 0.7
+            while bz < z + 0.6 {
+                let w = r.f(0.08, 0.16), h = r.f(0.28, 0.4)
+                b.box(SIMD3(min(inner, x1), 3.46, bz), SIMD3(max(inner, x1), 3.46 + h, bz + w), rgb(r.pick(spines)))
+                bz += w + 0.01
+            }
         }
     }
 
@@ -947,7 +1109,23 @@ final class SceneryLibrary {
 
             // Little things by the fence.
             scatter(b, &r, ["farm_flower_yellowA", "farm_flower_redB", "farm_grass_large", "farm_plant_bush"],
-                    count: 5, side: side, x0: 3.4, x1: 3.8, L: L, s0: 2, s1: 3)
+                    count: 8, side: side, x0: 3.4, x1: 3.8, L: L, s0: 2, s1: 3)
+            // Sunflowers behind the fence, a water trough, a scarecrow, haystacks, hens.
+            if r.chance(0.5) {
+                var sz: Float = -r.f(1, 3)
+                while sz > -L + 1 {
+                    sunflower(b, side: side, x: 4.7 + r.f(-0.2, 0.2), z: sz, h: r.f(1.5, 2.2), r: &r)
+                    sz -= r.f(1.0, 1.6)
+                }
+            }
+            if r.chance(0.4) { trough(b, side: side, x: 6.0, z: -L * r.f(0.2, 0.8)) }
+            if r.chance(0.35) { scarecrow(b, side: side, x: r.f(7, 10), z: -L * r.f(0.2, 0.8), r: &r) }
+            if r.chance(0.4) {
+                for _ in 0..<(r.int(2) + 1) { haystack(b, x: side * r.f(10, 14), z: -L * r.f(0.15, 0.85)) }
+            }
+            if r.chance(0.5) {
+                for _ in 0..<3 { hen(b, x: side * r.f(5.4, 8), z: -L * r.f(0.1, 0.9), r: &r) }
+            }
 
             if hasFeature {
                 let z = -L * 0.5
@@ -1047,6 +1225,63 @@ final class SceneryLibrary {
             // The blades model spins about x. Put the hub on the road-facing side of the cap.
             b.add(blades, translate(side * (x - 2.0), 8.6, z) * rotateX(r.f(0, 1.5)) * scale(s, s, s))
         }
+    }
+
+    /// A sunflower facing the road: stem, two leaves, a disc of petals with a brown heart.
+    private func sunflower(_ b: MeshBuilder, side: Float, x: Float, z: Float, h: Float, r: inout SeededRandom) {
+        let stem = rgb(0x4E9630), petal = rgb(0xFFD23F), heart = rgb(0x5A3A1E)
+        let px = side * x
+        b.box(SIMD3(px - 0.04, 0, z - 0.04), SIMD3(px + 0.04, h, z + 0.04), stem)
+        for lz: Float in [-1, 1] {
+            let a = SIMD3<Float>(px, h * 0.45, z)
+            let c = SIMD3<Float>(px, h * 0.5, z + lz * 0.45)
+            let d = SIMD3<Float>(px + side * 0.05, h * 0.62, z + lz * 0.2)
+            b.tri(a, c, d, stem)
+            b.tri(a, d, c, stem * 0.9)
+        }
+        let t = translate(px, h, z) * rotateZ(side > 0 ? .pi / 2 : -.pi / 2)
+        b.frustum(r0: 0.34, r1: 0.34, h: 0.04, sides: 12, petal, cap: petal, bottom: true, t)
+        b.frustum(r0: 0.19, r1: 0.19, h: 0.05, sides: 12, heart, cap: heart, bottom: true, t * translate(0, 0.04, 0))
+    }
+
+    private func trough(_ b: MeshBuilder, side: Float, x: Float, z: Float) {
+        let steel = rgb(0x9AA6B0), water = rgb(0x8FD0E8)
+        let px = side * x
+        b.box(SIMD3(px - 0.45, 0, z - 0.9), SIMD3(px + 0.45, 0.55, z + 0.9), steel)
+        b.box(SIMD3(px - 0.38, 0.55, z - 0.83), SIMD3(px + 0.38, 0.565, z + 0.83), water)
+    }
+
+    private func scarecrow(_ b: MeshBuilder, side: Float, x: Float, z: Float, r: inout SeededRandom) {
+        let wood = rgb(0x8A5A34), straw = rgb(0xE8C45A), hat = rgb(0x5A3A1E)
+        let shirt = rgb(r.pick([0xD8453A, 0x3560C8, 0x2E9E55]))
+        let t = translate(side * x, 0, z) * rotateY(side > 0 ? -.pi / 2 : .pi / 2)
+        b.box(SIMD3(-0.07, 0, -0.07), SIMD3(0.07, 2.6, 0.07), wood, t)
+        b.box(SIMD3(-1.0, 1.9, -0.06), SIMD3(1.0, 2.0, 0.06), wood, t)
+        b.box(SIMD3(-0.42, 1.1, -0.2), SIMD3(0.42, 2.05, 0.2), shirt, t)
+        b.box(SIMD3(-1.0, 1.78, -0.14), SIMD3(1.0, 2.08, 0.14), shirt * 0.95, t)
+        for hx: Float in [-1.0, 1.0] {
+            b.box(SIMD3(hx - 0.1, 1.72, -0.1), SIMD3(hx + 0.1, 1.84, 0.1), straw, t)
+        }
+        b.blob(SIMD3(side * x, 2.35, z), SIMD3(0.28, 0.3, 0.28), straw, segments: 8, rings: 4)
+        b.frustum(r0: 0.5, r1: 0.5, h: 0.04, sides: 10, hat, cap: hat, bottom: true, translate(side * x, 2.56, z))
+        b.frustum(r0: 0.28, r1: 0.24, h: 0.3, sides: 10, hat, cap: hat, bottom: false, translate(side * x, 2.6, z))
+    }
+
+    private func haystack(_ b: MeshBuilder, x: Float, z: Float) {
+        let hay = rgb(0xF2CF5B), dark = rgb(0xD9B244)
+        b.frustum(r0: 1.5, r1: 1.2, h: 0.9, sides: 10, dark, cap: dark, bottom: false, translate(x, 0, z))
+        b.frustum(r0: 1.25, r1: 0.15, h: 1.9, sides: 10, hay, cap: hay, bottom: false, translate(x, 0.9, z))
+    }
+
+    /// A hen pecking about: a body, a head, a red comb, a beak.
+    private func hen(_ b: MeshBuilder, x: Float, z: Float, r: inout SeededRandom) {
+        let body = rgb(r.pick([0xFFFFFF, 0xD9823A, 0x3A3A3A])), comb = rgb(0xE8392F), beak = rgb(0xFFB13F)
+        let a = r.f(0, 6.28)
+        let dx = cos(a) * 0.22, dz = -sin(a) * 0.22
+        b.blob(SIMD3(x, 0.26, z), SIMD3(0.24, 0.2, 0.3), body, segments: 7, rings: 4)
+        b.blob(SIMD3(x + dx, 0.5, z + dz), SIMD3(0.11, 0.11, 0.11), body, segments: 6, rings: 3)
+        b.blob(SIMD3(x + dx, 0.62, z + dz), SIMD3(0.04, 0.06, 0.08), comb, segments: 5, rings: 3)
+        b.blob(SIMD3(x + dx * 1.5, 0.48, z + dz * 1.5), SIMD3(0.05, 0.03, 0.05), beak, segments: 5, rings: 3)
     }
 
     private func hayBale(_ b: MeshBuilder, x: Float, z: Float, r: inout SeededRandom) {
