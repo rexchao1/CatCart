@@ -780,6 +780,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         prepareForRun(in: view)
 
         hud.showHome(best: bestScore, cat: cart.cat, cart: cart.cart)
+        // Test-only: CATCART_MENU=1 opens the home menu, for a screenshot.
+        if ProcessInfo.processInfo.environment["CATCART_MENU"] == "1" {
+            hud.setMenuOpen(true)
+        }
         if e2eAutoRun {
             startRun()
             homeBlend = 0
@@ -1009,7 +1013,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     /// The home screen's picker: swap the cat or the cart, save it, and show it.
-    private func pick(_ choice: Hud.HomePick) {
+    private func pick(_ choice: Hud.HomeTap) {
         switch choice {
         case .cat(let step):
             let next = cart.cat.cycled(step)
@@ -1019,9 +1023,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let next = cart.cart.cycled(step)
             cart.setCart(next)
             Choices.cart = next
+        default:
+            return
         }
         lookAfterPlayer()
         hud.setPicks(cat: cart.cat, cart: cart.cart)
+        tick()
+    }
+
+    /// A light tick for picker and switch taps.
+    private func tick() {
+        guard Choices.haptics else { return }
         DispatchQueue.main.async { UISelectionFeedbackGenerator().selectionChanged() }
     }
 
@@ -3970,8 +3982,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         endAllPowers()
         hideDuckHint()
         dust.birthRate = 0
-        DispatchQueue.main.async {
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        if Choices.haptics {
+            DispatchQueue.main.async {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
         }
         hud.flashWhite()
         hud.clearLines()
@@ -4107,6 +4121,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        guard Choices.haptics else { return }
         DispatchQueue.main.async {
             UIImpactFeedbackGenerator(style: style).impactOccurred()
         }
@@ -4167,17 +4182,34 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             if state == .running { testLog("\(intent)") }
             switch (state, intent) {
             case (.ready, .lift(let point)):
-                // A tap on the picker's pills changes the cat or the cart;
-                // anywhere else starts the run.
-                if let choice = hud.homePick(at: point) {
-                    pick(choice)
-                } else {
+                // The menu button and the menu's controls; anywhere else
+                // starts the run.
+                switch hud.homeTap(at: point) {
+                case nil:
                     startRun()
+                case .openMenu?:
+                    hud.setMenuOpen(true)
+                    tick()
+                case .closeMenu?:
+                    hud.setMenuOpen(false)
+                case .toggleSound?:
+                    Choices.sound.toggle()
+                    hud.setSwitches(sound: Choices.sound, haptics: Choices.haptics)
+                    tick()
+                case .toggleHaptics?:
+                    Choices.haptics.toggle()
+                    hud.setSwitches(sound: Choices.sound, haptics: Choices.haptics)
+                    tick()
+                case .ignore?:
+                    break
+                case let choice?:
+                    pick(choice)
                 }
             case (.ready, .left):
-                pick(.cat(-1))
+                // With the menu open, a swipe flips through the cats.
+                if hud.menuOpen { pick(.cat(-1)) }
             case (.ready, .right):
-                pick(.cat(1))
+                if hud.menuOpen { pick(.cat(1)) }
             case (.dead, .tap):
                 // Only a touch that starts after the pause can restart, and only
                 // once it lifts without swiping.
@@ -4246,9 +4278,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             puff(at: SCNVector3(visualX - Float(delta) * 0.55, floorY + 0.08, 0.35), count: 5,
                  color: UIColor(white: 1, alpha: 0.45))
         }
-        DispatchQueue.main.async {
-            UISelectionFeedbackGenerator().selectionChanged()
-        }
+        tick()
     }
 
     /// Returns false if she can't jump yet (still in the air).

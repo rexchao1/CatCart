@@ -99,6 +99,10 @@ final class Hud: SKScene {
         dim.position = center
         home.childNode(withName: "top")?.position = CGPoint(x: size.width / 2, y: size.height - self.topSafe - 66)
         home.childNode(withName: "bottom")?.position = CGPoint(x: size.width / 2, y: size.height * 0.17)
+        // The menu button sits in the top-right corner, beside the camera cutout.
+        home.childNode(withName: "menuButton")?.position = CGPoint(x: size.width - 38, y: size.height - 44)
+        // The menu sits low, so she stays in view above it while you pick.
+        home.childNode(withName: "menu")?.position = CGPoint(x: size.width / 2, y: max(menuSize.height / 2 + 30, size.height * 0.2))
         for (name, atTop) in [("shadeTop", true), ("shadeBottom", false)] {
             guard let shade = home.childNode(withName: name) as? SKSpriteNode else { continue }
             shade.size = CGSize(width: size.width, height: size.height * 0.36)
@@ -198,22 +202,32 @@ final class Hud: SKScene {
 
     // MARK: - Home
 
-    /// What a tap on the home screen's picker asks for: the next (+1) or the
-    /// previous (-1) cat or cart.
-    enum HomePick {
-        case cat(Int)
-        case cart(Int)
+    /// What a tap on the home screen asks for. A tap that is none of these
+    /// starts the run.
+    enum HomeTap {
+        case openMenu, closeMenu
+        /// The next (+1) or the previous (-1) cat or cart.
+        case cat(Int), cart(Int)
+        case toggleSound, toggleHaptics
+        /// A tap on the menu that hit nothing. It does nothing.
+        case ignore
     }
 
-    /// The picker's two pills, cat on top, sitting above the play button.
-    private let pickWidth: CGFloat = 228
+    /// The menu: the cat and cart pickers and two switches, in a panel over the
+    /// bottom of the screen so she stays in view above it.
+    private let pickWidth: CGFloat = 236
     private let pickHeight: CGFloat = 44
-    private let catRowY: CGFloat = 150
-    private let cartRowY: CGFloat = 96
+    private let menuSize = CGSize(width: 300, height: 262)
+    private let catRowY: CGFloat = 92
+    private let cartRowY: CGFloat = 40
+    private let switchRowY: CGFloat = -14
+    private let doneRowY: CGFloat = -82
+    private let menuButtonRadius: CGFloat = 24
+    private(set) var menuOpen = false
 
     /// The title screen: big name up top, the kitten in the middle (that's the 3D
-    /// scene), the cat and cart pickers, and a paw button with the best score at
-    /// the bottom.
+    /// scene), a paw button with the best score at the bottom, and a menu button
+    /// in the corner that opens the cat and cart pickers and the switches.
     func showHome(best: Int, cat: CatChoice, cart: CartChoice) {
         panel.removeAllChildren()
         panel.isHidden = true
@@ -269,9 +283,6 @@ final class Hud: SKScene {
         let play = pawButton("Tap to play")
         bottom.addChild(play)
         pulse(play)
-        bottom.addChild(pickRow(name: "catPick", caption: "CAT", y: catRowY))
-        bottom.addChild(pickRow(name: "cartPick", caption: "CART", y: cartRowY))
-        setPicks(cat: cat, cart: cart)
         if best > 0 {
             let chip = SKSpriteNode(imageNamed: "uiHud")
             chip.size = CGSize(width: 200, height: 46)
@@ -284,7 +295,109 @@ final class Hud: SKScene {
         }
         bottom.alpha = 0
         bottom.run(.sequence([.wait(forDuration: 0.15), .fadeIn(withDuration: 0.3)]))
+
+        home.addChild(menuButton())
+        let menu = SKNode()
+        menu.name = "menu"
+        menu.isHidden = true
+        home.addChild(menu)
+        let back = SKShapeNode(rectOf: menuSize, cornerRadius: 28)
+        back.fillColor = navy.withAlphaComponent(0.84)
+        back.strokeColor = SKColor(white: 1, alpha: 0.35)
+        back.lineWidth = 2
+        menu.addChild(back)
+        menu.addChild(pickRow(name: "catPick", caption: "CAT", y: catRowY))
+        menu.addChild(pickRow(name: "cartPick", caption: "CART", y: cartRowY))
+        menu.addChild(switchPill(name: "soundSwitch", title: "Sound", x: -72))
+        menu.addChild(switchPill(name: "hapticsSwitch", title: "Vibration", x: 72))
+        let done = textSprite("Done", size: 20, weight: .heavy, color: navy)
+        let doneBack = SKShapeNode(rectOf: CGSize(width: 140, height: 44), cornerRadius: 22)
+        doneBack.fillColor = icy
+        doneBack.strokeColor = .white
+        doneBack.lineWidth = 2
+        doneBack.position = CGPoint(x: 0, y: doneRowY)
+        done.position = doneBack.position
+        menu.addChild(doneBack)
+        menu.addChild(done)
+        menuOpen = false
+        setPicks(cat: cat, cart: cart)
+        setSwitches(sound: Choices.sound, haptics: Choices.haptics)
         layout(topSafe: topSafe)
+    }
+
+    /// The round menu button in the top corner: three short white bars.
+    private func menuButton() -> SKNode {
+        let button = SKShapeNode(circleOfRadius: menuButtonRadius)
+        button.name = "menuButton"
+        button.fillColor = navy.withAlphaComponent(0.66)
+        button.strokeColor = SKColor(white: 1, alpha: 0.5)
+        button.lineWidth = 2
+        for dy: CGFloat in [-7, 0, 7] {
+            let bar = SKShapeNode(rectOf: CGSize(width: 20, height: 3.5), cornerRadius: 1.75)
+            bar.fillColor = .white
+            bar.strokeColor = .clear
+            bar.position = CGPoint(x: 0, y: dy)
+            button.addChild(bar)
+        }
+        return button
+    }
+
+    /// An on/off switch with its name beside it.
+    private func switchPill(name: String, title: String, x: CGFloat) -> SKNode {
+        let row = SKNode()
+        row.name = name
+        row.position = CGPoint(x: x, y: switchRowY)
+        let back = SKShapeNode(rectOf: CGSize(width: 136, height: pickHeight), cornerRadius: pickHeight / 2)
+        back.fillColor = SKColor(white: 1, alpha: 0.12)
+        back.strokeColor = SKColor(white: 1, alpha: 0.3)
+        back.lineWidth = 1.5
+        row.addChild(back)
+        let label = textSprite(title, size: 14, weight: .heavy, color: .white)
+        label.anchorPoint.x = 0
+        label.position = CGPoint(x: -56, y: 0)
+        fit(label, maxWidth: 66)
+        row.addChild(label)
+        let track = SKShapeNode(rectOf: CGSize(width: 44, height: 26), cornerRadius: 13)
+        track.name = "track"
+        track.strokeColor = .clear
+        track.position = CGPoint(x: 38, y: 0)
+        row.addChild(track)
+        let knob = SKShapeNode(circleOfRadius: 10)
+        knob.name = "knob"
+        knob.fillColor = .white
+        knob.strokeColor = .clear
+        track.addChild(knob)
+        return row
+    }
+
+    /// Shows the switches on or off.
+    func setSwitches(sound: Bool, haptics: Bool) {
+        guard let menu = home.childNode(withName: "menu") else { return }
+        for (name, on) in [("soundSwitch", sound), ("hapticsSwitch", haptics)] {
+            guard let track = menu.childNode(withName: name)?.childNode(withName: "track") as? SKShapeNode,
+                  let knob = track.childNode(withName: "knob") else { continue }
+            track.fillColor = on ? SKColor(red: 0.36, green: 0.82, blue: 0.5, alpha: 1) : SKColor(white: 0.55, alpha: 1)
+            knob.run(.moveTo(x: on ? 9 : -9, duration: 0.12))
+        }
+    }
+
+    /// Opens or closes the menu. The play button and best score step aside
+    /// while it's open.
+    func setMenuOpen(_ open: Bool) {
+        guard let menu = home.childNode(withName: "menu"), let bottom = home.childNode(withName: "bottom") else { return }
+        menuOpen = open
+        menu.removeAllActions()
+        bottom.removeAllActions()
+        if open {
+            menu.isHidden = false
+            menu.alpha = 0
+            menu.setScale(0.85)
+            menu.run(.group([.fadeIn(withDuration: 0.18), .scale(to: 1, duration: 0.18)]))
+            bottom.run(.fadeOut(withDuration: 0.15))
+        } else {
+            menu.run(.sequence([.fadeOut(withDuration: 0.15), .hide()]))
+            bottom.run(.fadeIn(withDuration: 0.2))
+        }
     }
 
     /// One picker pill: a caption, the name in the middle, an arrow button at
@@ -318,7 +431,7 @@ final class Hud: SKScene {
     /// Shows the picked cat and cart on the pills, with a little pop.
     func setPicks(cat: CatChoice, cart: CartChoice) {
         for (rowName, title) in [("catPick", cat.title), ("cartPick", cart.title)] {
-            guard let row = home.childNode(withName: "bottom")?.childNode(withName: rowName) else { continue }
+            guard let row = home.childNode(withName: "menu")?.childNode(withName: rowName) else { continue }
             let old = row.childNode(withName: "title") as? SKSpriteNode
             if old?.userData?["text"] as? String == title { continue }
             old?.removeFromParent()
@@ -336,18 +449,27 @@ final class Hud: SKScene {
         }
     }
 
-    /// The picker under a tap, if any. `point` is in the game view's points
-    /// (y down); this scene is the same size with y up.
-    func homePick(at point: CGPoint) -> HomePick? {
-        guard !home.isHidden, let bottom = home.childNode(withName: "bottom") else { return nil }
-        let x = point.x - bottom.position.x
-        let y = size.height - point.y - bottom.position.y
-        // A little bigger than the pills, for a thumb.
-        guard abs(x) < pickWidth / 2 + 14 else { return nil }
-        let step = x < 0 ? -1 : 1
-        if abs(y - catRowY) < pickHeight / 2 + 5 { return .cat(step) }
-        if abs(y - cartRowY) < pickHeight / 2 + 5 { return .cart(step) }
-        return nil
+    /// What a tap on the home screen hit. `point` is in the game view's points
+    /// (y down); this scene is the same size with y up. Nil means start the run.
+    func homeTap(at point: CGPoint) -> HomeTap? {
+        guard !home.isHidden else { return nil }
+        let p = CGPoint(x: point.x, y: size.height - point.y)
+        if let button = home.childNode(withName: "menuButton"),
+           hypot(p.x - button.position.x, p.y - button.position.y) < menuButtonRadius + 14 {
+            return menuOpen ? .closeMenu : .openMenu
+        }
+        guard menuOpen, let menu = home.childNode(withName: "menu") else { return nil }
+        let x = p.x - menu.position.x
+        let y = p.y - menu.position.y
+        // Off the panel closes it, so a stray tap never starts a run from the menu.
+        guard abs(x) < menuSize.width / 2, abs(y) < menuSize.height / 2 else { return .closeMenu }
+        // Rows get a little more than their height, for a thumb.
+        let reach = pickHeight / 2 + 4
+        if abs(y - catRowY) < reach { return .cat(x < 0 ? -1 : 1) }
+        if abs(y - cartRowY) < reach { return .cart(x < 0 ? -1 : 1) }
+        if abs(y - switchRowY) < reach { return x < 0 ? .toggleSound : .toggleHaptics }
+        if abs(y - doneRowY) < reach { return .closeMenu }
+        return .ignore
     }
 
     func hideHome() {
