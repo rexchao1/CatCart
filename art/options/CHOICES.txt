@@ -70,7 +70,18 @@ NATURAL-PROPORTION KITTEN, REVISION 2
   Rebuild with scripts/blender/make_kitten_realistic.py in Blender.
   Render study only. Not rigged or optimized for the game's model budget.
 
-CUTE KITTEN, REVISION 4, SMALLER EYES AND SNUG COLLAR (live since 2026-10-08)
+CUTE KITTEN, REVISION 5, REAL BSH ANATOMY (live since 2026-10-09)
+  kitten-cute-v4/kitten-cute-v4.blend  chubby jowls, short broad muzzle with a stop, whisker-pad dots, deeper
+                                        painted iris with bigger pupils, furred upper lids, cupped ears tipped
+                                        out with pale furnishings and darker backs, neck ruff, shoulder blades,
+                                        cobby back, toe bumps, fluffier tail, darker crown/back and paler bib
+  kitten-cute-v4/portrait.png front.png face.png rear.png game.png  studio renders; game.png is the run camera's angle
+  kitten-cute-v4/iris.png               the painted iris (also packed in the .blend)
+  Rex asked for "a lot more realistic, more cute" after revision 4.
+  Rebuild with scripts/blender/make_kitten_v4.py (Blender, or python3 scripts/blender/run_bpy.py with the bpy module).
+  In the game she has shell fur grown from the painted fur length.
+
+CUTE KITTEN, REVISION 4, SMALLER EYES AND SNUG COLLAR (live 2026-10-08 to 2026-10-09)
   kitten-cute-v3b/kitten-cute-v3.blend  rounder BSH face, golden eyes with a painted iris, pink nose,
                                         small round ears, painted coat, snug collar, render-only strand fur
   kitten-cute-v3b/portrait.png front.png face.png rear.png  studio renders
@@ -84,9 +95,9 @@ CUTE KITTEN, REVISION 4, FIRST TAKE (live for an hour on 2026-10-08)
   player/kitten-v3-big-eyes.scn   its game model; copy over CatCart/Models/cat_kitten.scn to bring it back
 
 SAVED KITTEN MODEL
-  art/models/kitten/cat.blend   copy of kitten-cute-v3b's .blend (revision 4), the live source
+  art/models/kitten/cat.blend   copy of kitten-cute-v4's .blend (revision 5), the live source
   scripts/build_kitten.sh turns it into CatCart/Models/cat_kitten.scn (fur, colors, iris).
-  Until 2026-10-08 this was revision 2 (kitten-realistic-v2 plus the collar).
+  On 2026-10-08 this was revision 4 (kitten-cute-v3b); until then revision 2 (kitten-realistic-v2 plus the collar).
 
 PREVIOUS GAME KITTEN (live 2026-10-03 to 2026-10-08)
   player/kitten-v2.scn   revision 2, smooth and furless

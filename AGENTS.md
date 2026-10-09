@@ -26,7 +26,7 @@ Read `docs/plans/power-ups.md` before changing power-ups, where food spawns, or 
 
 ## Kitten asset
 
-The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v3.py`. After changing her, run `scripts/build_kitten.sh`, then `swift scripts/check_game_art.swift`. Her fur is shell fur built into `cat_kitten.scn` by `scripts/build_kitten.swift`; `docs/plans/kitten-blender-study.md` explains it. Changing her size means rechecking the duck heights in `docs/plans/duck.md`.
+The kitten's source is `art/models/kitten/cat.blend`, built by `scripts/blender/make_kitten_v4.py`. After changing her, run `scripts/build_kitten.sh`, then `swift scripts/check_game_art.swift`. Her fur is shell fur built into `cat_kitten.scn` by `scripts/build_kitten.swift`; `docs/plans/kitten-blender-study.md` explains it. Changing her size means rechecking the duck heights in `docs/plans/duck.md`.
 
 ## Food and coyote assets
 
