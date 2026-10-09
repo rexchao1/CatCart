@@ -116,3 +116,18 @@ COYOTE BLENDER STUDY
   Rebuild with scripts/blender/make_coyote_study.py in Blender.
   LIVE: exported to CatCart/Models/coyote_run.scn with a gallop and snarl by scripts/build_art.sh.
   coyote/coyote-original.scn          previous game coyote, kept as an option
+
+ROADS, FIRST TAKE (live until 2026-10-09)
+  roads-v1/roadCity.png roadJungle.png roadHouse.png roadFarm.png
+  Flatter asphalt with rounded dashes, a dotted stone line in the jungle, three pink
+  runner rugs in the house, plain dirt with grass strips on the farm.
+  LIVE: the second take in CatCart/Assets.xcassets/road*.imageset, from scripts/make_3d_textures.py
+  (run `python3 scripts/make_3d_textures.py roads`). To bring a first take back, copy it over
+  the matching imageset PNG.
+
+SKIES, FIRST TAKE (live until 2026-10-09)
+  skies-v1/skyCity.png skyJungle.png skyHouse.png skyFarm.png
+  Plain gradients, 512x1024, clouds only in city and farm, flat fog from 75% down.
+  LIVE: the second take, 768x1536, with a sun glow, shaded clouds, and a hazy far layer
+  (skyline, mountains and canopy, the end of the hall, hills with a barn), flat fog from 56% down.
+  Run `python3 scripts/make_3d_textures.py skies` to redraw. Rex asked for a better road and background.
