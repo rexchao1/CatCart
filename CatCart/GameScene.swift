@@ -142,6 +142,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var pulled = false
         /// Height the pickup was placed at, for the magnet to pull it from.
         var baseY: Float = 0
+        /// A coyote's head turn toward her. It fades out as the coyote reaches
+        /// her, so the head doesn't swing round when she jumps right over it.
+        var gaze: SCNLookAtConstraint?
         var back: Float { z - length }
         /// Where the mesh sits: a ramped tree's mesh starts where the slope ends.
         var nodeZ: Float { z - rampLength }
@@ -852,7 +855,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         // on the brightest spots, slightly richer color, and a faint vignette.
         // HDR rendering adds a pass or two on the phone. Set `effects` false if a
         // run makes the phone warm or CATCART_PERF=1 shows longer frames.
-        let effects = true
+        // CATCART_FLAT=1 turns them off, to measure what they cost on the phone.
+        let effects = ProcessInfo.processInfo.environment["CATCART_FLAT"] == nil
         if effects {
             camera.wantsHDR = true
             // No auto-exposure: the picture must not brighten and dim as scenery passes.
@@ -1030,7 +1034,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         starsClock += dt
         starsAngle += dt * 5
         let pop = min(1, starsClock / 0.3)
-        let s = pop * (1 + 0.35 * sin(pop * .pi))
+        let s = max(0.001, pop * (1 + 0.35 * sin(pop * .pi)))
         starsNode.scale = SCNVector3(s, s, s)
         starsNode.eulerAngles.y = starsAngle
         starsNode.position = SCNVector3(0, height + 1.55 + 0.05 * sin(starsClock * 3), 0.1)
@@ -1401,6 +1405,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             var motion = CartMotion()
             motion.rolling = false
             motion.crashed = true
+            motion.tilt = tilt
             cart.update(dt: dt, motion: motion)
             updateChase(dt: dt)
             updateRings(dt: dt, dz: 0)
@@ -1675,6 +1680,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let magnet = powerLeft[.magnet] != nil
         for item in items {
             item.z += dz
+            if let gaze = item.gaze {
+                // Full turn 6 m or more out, none from 2 m in.
+                gaze.influenceFactor = CGFloat(0.3 * max(0, min(1, (-item.z - 2) / 4)))
+            }
             if magnet && item.kind == .food && !item.pulled && item.z > -magnetRange && item.z < 0 {
                 item.pulled = true
             }
@@ -2172,6 +2181,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         item.frame = Int.random(in: 0..<4)
         item.high = high
         item.power = power
+        if kind == .coyote {
+            item.gaze = node.childNode(withName: "head", recursively: true)?.constraints?.first as? SCNLookAtConstraint
+        }
         // Food in the air hangs where a jump's arc carries her, and drops its shadow.
         node.childNode(withName: "shadow", recursively: false)?.isHidden = high
         node.position = SCNVector3(laneX(lane), high ? airFoodY : y, item.nodeZ)
@@ -3947,6 +3959,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         starsNode.isHidden = false
         starsClock = 0
         starsAngle = 0
+        // Place them now, so the crash frame doesn't show last time's ring.
+        updateStars(dt: 0)
         puff(at: SCNVector3(visualX, height + 0.3, 0.2), count: 16, color: UIColor(white: 0.95, alpha: 0.9))
         let newBest = score > bestScore
         if newBest {
