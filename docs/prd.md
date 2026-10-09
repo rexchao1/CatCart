@@ -66,11 +66,13 @@ The food source is `art/models/food/wet-food.blend`; the coyote source is `art/m
 
 These are the Subway Surfers trains. A cat tree occupies one lane, with a flat carpeted top the cart can roll on. Sisal posts, cubbies, hanging toys are fine as long as the rideable roof is obvious.
 
+They look like real, high-end cat furniture, creative and fun (Rex's call, 2026-10-09: "The trees have to look like real cat trees that also are creative and realistic and fun"). The roof is a thick cream carpet platform with rounded edges and a trail of paw prints pressed into the pile, flat for its whole length with nothing standing on it. Under it, thick sisal-wrapped posts (visible rope wraps) frame bays that hold carpeted condos with round portholes in a rolled cream rim or arched doorways, and cat ears on top of the porthole condos. Open bays take turns holding a hammock slung between the posts, a carpet tunnel on the floor (a lookout tube on a tall tree's upper story), or a sisal scratch board leaning up the outer side with cream steps. Toys swing on strings under the roof's edge, outside the ride: a pom-pom at the front, a toy mouse or a feather at the back. Each tree picks an accent carpet (cream, soft gray, mint, blush pink, lavender, or sand) and a toy color, so trees on the road differ. Big readable shapes first: everything has to read from the run camera through the fog. Nothing stands above the roof in the ride path, nothing sticks out of the lane or in front of the tree's front edge.
+
 Two heights and a ramp (Rex's call, 2026-10-05):
 
 - Short tree: one story of cubbies, roof at 2.0 m (was 1.5). A jump from the ground lands on it.
 - Tall tree: two stories of cubbies on a carpeted shelf, roof at 3.5 m. A jump from the ground can't reach it, so its front is a wall. You get up by a ramp or by jumping from a short tree's roof. It is the one tree that should read as a tower you smash into from the road, with its flat roof still obvious.
-- Ramp: a carpeted slope with sisal rope along its edges, climbing from the road to the front of a tree. It is 8 m long at the start speed and stretches with speed like a tree, so the climb takes about half a second.
+- Ramp: a carpeted slope with sisal rope along its edges, a sisal scratch-pad runner up the middle with cream steps across it, and the roof's paw prints leading up, climbing from the road to the front of a tree. It is 8 m long at the start speed and stretches with speed like a tree, so the climb takes about half a second. The slope is the gameplay; the steps are 5 cm of trim.
 
 This is the hard piece. The sprite, the lane width, and the ride length have to agree. If the tree looks like a tall tower you smash into, or like a rug with no height, it is wrong.
 
@@ -224,7 +226,7 @@ Defaults in the game today:
 | Player | 3D kitten with shell fur from `art/models/kitten/cat.blend` (`cat_kitten.scn`) in the 3D La Croix cart |
 | Coyote | 3D galloping coyote (`coyote_run.scn`), flat snarl pictures as fallback |
 | Food | 3D turquoise salmon can (`wet_food.scn`) |
-| Cat tree | cubby tree with a flat roof, short (one story) and tall (two), carpeted ramp |
+| Cat tree | condo tree with a flat paw-print roof, sisal posts, hammocks, tunnels, swinging toys, short (one story) and tall (two), carpeted ramp with a sisal runner |
 | Worlds | 3D kits in `CatCart/Models`, roads and skies from `scripts/make_3d_textures.py` |
 | UI | paw panel, paw button, hud bar |
 | App icon | farm-road (kitten in cart, blue sky), from `scripts/make_icon.py` |
@@ -245,7 +247,7 @@ This is the live game, not a wish list.
 - Four power-ups on the road: Fizz Rocket (fly through a food trail), Can Magnet, Pounce Springs (high jumps), Nine Lives (one saved crash), with a callout and timer badges.
 - 3D coyotes with a looping gallop and snapping jaw. Jumpable.
 - 3D turquoise wet-food cans, single cans and lines of cans, some sitting on tree roofs.
-- Cat trees as real 3D platforms: carpeted roof, sisal posts, cubbies, a pom-pom. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
+- Cat trees as real 3D cat furniture: paw-print carpet roof, sisal posts, condos with portholes and cat ears, hammocks, tunnels, scratch boards, swinging toys, an accent carpet per tree. Short trees (2.0 m roof) and tall ones (3.5 m, two stories), some with a carpeted ramp to roll up. Ride, hop to a neighbor tree, step down from a tall roof, jump a gap from roof to roof, fall off the end, bump off the side. Trees are in about half the mixes, from the first seconds; tall trees and ramps from 8 s.
 - Duck into the box with a swipe down. One low thing per world to duck under, from 8 s. A one-time hint teaches it (not shown for a blocked lane).
 - Speed from 17 to 34 m/s over 75 s, then a slow creep to 38. Blocked lanes (a coyote under a low thing) from 8 s, so steering is required. Hard mixes from 20 s. The road starts full, mixes have two or more obstacles, and the gap between them shrinks to 0.25 s.
 - Stumbles on glancing hits, a green spray bottle that chases for 4 s, and a second stumble gets her caught.

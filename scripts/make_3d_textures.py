@@ -488,38 +488,67 @@ def road_farm():
 C = 512
 
 
-def carpet(dark=False, seed=0):
-    top = (0xEB, 0xCF, 0xA0)
+def paw(w, cx, cy, size, fill, flip=False):
+    """One paw print: a heel pad and four toes, the way a cat leaves them."""
+    s = size
+    w.ellipse((cx - 0.42 * s, cy - 0.22 * s, cx + 0.42 * s, cy + 0.42 * s), fill)
+    toes = [(-0.55, -0.42, 0.21), (-0.2, -0.68, 0.23), (0.2, -0.68, 0.23), (0.55, -0.42, 0.21)]
+    for tx, ty, tr in toes:
+        if flip:
+            ty = -ty + 0.2
+        w.ellipse((cx + tx * s - tr * s, cy + ty * s - tr * s, cx + tx * s + tr * s, cy + ty * s + tr * s), fill)
+
+
+def carpet(dark=False, seed=0, paws=False):
+    """Plush loop carpet, one lane width per tile.
+
+    The roof carpet (paws=True) is warm cream with a trail of paw prints pressed
+    into the pile. The side carpet is a neutral light gray: the game tints it
+    per tree (cream, gray, mint, blush, lavender, sand) through the material's
+    multiply color, so one picture gives every accent.
+    """
+    top = (0xF2, 0xE6, 0xCE) if paws else (0xD9, 0xD4, 0xCC)
     if dark:
-        top = (0xC8, 0xA0, 0x6C)
+        top = (0xC4, 0xBE, 0xB4)
     base = solid((C, C), top)
-    base = shade(base, noise((C, C), (6, 6), 60 + seed), -0.07)
+    base = shade(base, noise((C, C), (6, 6), 60 + seed), -0.06)
     # Fluffy loops: mid and fine noise, lightened and darkened.
-    base = shade(base, noise((C, C), (64, 64), 61 + seed), -0.13)
-    base = shade(base, noise((C, C), (96, 96), 62 + seed), 0.10)
+    base = shade(base, noise((C, C), (64, 64), 61 + seed), -0.14)
+    base = shade(base, noise((C, C), (96, 96), 62 + seed), 0.12)
     base = shade(base, noise((C, C), (40, 40), 63 + seed), -0.07)
     # Tufts: soft specks, wrapped both ways.
     rnd = random.Random(64 + seed)
     w = Wrap((C, C), nx=3, ny=3)
-    for _ in range(420):
+    for _ in range(480):
         x, y = rnd.uniform(0, C), rnd.uniform(0, C)
         r = rnd.uniform(3, 6)
         if rnd.random() < 0.5:
-            w.ellipse((x - r, y - r, x + r, y + r), (255, 250, 238, 70))
+            w.ellipse((x - r, y - r, x + r, y + r), (255, 252, 244, 75))
         else:
-            w.ellipse((x - r, y - r, x + r, y + r), (0x9A, 0x84, 0x62, 45))
+            w.ellipse((x - r, y - r, x + r, y + r), (0x9A, 0x8A, 0x72, 45))
     w.blur(1.5)
     base = over(base, w.fold())
+    if paws:
+        # Two prints per tile, left and right of the middle where the cart
+        # rolls, staggered like a walking cat. Pressed pile reads a little
+        # darker and warmer than the loops around it.
+        pw = Wrap((C, C), nx=3, ny=3)
+        ink = (0xB8, 0x92, 0x66, 150)
+        paw(pw, C * 0.22, C * 0.30, C * 0.17, ink)
+        paw(pw, C * 0.78, C * 0.78, C * 0.17, ink)
+        pw.blur(2.0)
+        base = over(base, pw.fold())
     return soft_finish(base, 0.5)
 
 
 def sisal():
-    # Horizontal wrapped bands; each band a rope with diagonal twist.
-    bands = 12
+    # Horizontal wrapped bands; each band a thick rope with a diagonal twist and
+    # a dark seam between wraps, bold enough to read from the run camera.
+    bands = 10
     bh = C / bands
-    period = C / 24  # twist repeats 24 times across -> wraps left/right
-    light = (0xE2, 0xB8, 0x6A)
-    dark = (0x9A, 0x6E, 0x34)
+    period = C / 20  # twist repeats 20 times across -> wraps left/right
+    light = (0xE8, 0xC2, 0x7A)
+    dark = (0x8A, 0x5E, 0x2A)
     fib = noise((C, C), (180, 24), 71)
     fib_px = fib.load()
     out = Image.new("RGB", (C, C))
@@ -527,13 +556,13 @@ def sisal():
     for y in range(C):
         band = int(y // bh)
         t = (y - band * bh) / bh
-        roundness = math.sin(math.pi * t) ** 0.55  # 0 at the gap, 1 at the crown
+        roundness = math.sin(math.pi * t) ** 0.7  # 0 at the seam, 1 at the crown
         for x in range(C):
             # Diagonal strands; alternate lean every band for a wrapped look.
             lean = 1 if band % 2 == 0 else -1
             s = 0.5 + 0.5 * math.sin(math.tau * (x / period + lean * t * 0.9))
-            k = 0.18 + 0.62 * roundness + 0.2 * s * roundness
-            k += (fib_px[x, y] - 128) / 255 * 0.14
+            k = 0.10 + 0.70 * roundness + 0.22 * s * roundness
+            k += (fib_px[x, y] - 128) / 255 * 0.12
             k = max(0.0, min(1.0, k))
             px[x, y] = tuple(int(dark[i] + (light[i] - dark[i]) * k) for i in range(3))
     return soft_finish(out, 0.6)
@@ -670,8 +699,8 @@ def main():
     save("roadJungle", road_jungle())
     save("roadHouse", road_house())
     save("roadFarm", road_farm())
-    save("carpetTop", carpet(False, 0))
-    save("carpetSide", carpet(True, 5))
+    save("carpetTop", carpet(False, 0, paws=True))
+    save("carpetSide", carpet(False, 5))
     save("sisalRope", sisal())
     save("blobShadow", blob_shadow())
     save("puffDot", puff_dot())
