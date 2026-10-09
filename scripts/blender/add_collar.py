@@ -6,7 +6,7 @@
 #
 # Run it as often as you like: it deletes the old "Collar ..." objects first.
 # Pass --nosave to only render, --norender to skip the previews.
-# scripts/blender/make_kitten_v3.py runs it with both, before it saves. The objects are named so export_kitten.py can
+# scripts/blender/make_kitten_v4.py runs it with both, before it saves. The objects are named so export_kitten.py can
 # fold them into the head (the collar leans with her head in the game):
 #   Collar strap  (material kittenCollar)
 #   Collar stitch (kittenCollarStitch)

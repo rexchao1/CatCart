@@ -1,5 +1,5 @@
 # Turns the kitten study (art/models/kitten/cat.blend, built by
-# scripts/blender/make_kitten_v3.py) into the game kitten: kitten.json plus the
+# scripts/blender/make_kitten_v4.py) into the game kitten: kitten.json plus the
 # pictures it uses, which scripts/build_kitten.swift packs into
 # CatCart/Models/cat_kitten.scn. scripts/build_kitten.sh runs both:
 #
@@ -70,7 +70,7 @@ for o in list(scene.objects):
 # ---------------------------------------------------------------- curves to meshes
 # Hairline curves vanish at game size, so they get thicker first.
 THICK = {"Brow whisker": .0016, "Whisker": .0022, "Mouth line": .0032, "Eye rim": .0046,
-         "Toe crease": .003}
+         "Toe crease": .003, "Left ear furnishing": .0016, "Right ear furnishing": .0016}
 for o in list(scene.objects):
     if o.type != "CURVE":
         continue
@@ -83,8 +83,9 @@ for o in list(scene.objects):
 
 # ---------------------------------------------------------------- budgets
 BUDGET = {"Head cheeks and short muzzle": 5200, "Torso and haunches": 4400, "Left foreleg": 1100,
-          "Right foreleg": 1100, "Left ear": 700, "Right ear": 700, "Left eye": 700, "Right eye": 700,
-          "Game tail": 1400, "Game tail tip": 1000, "Furred lid": 300, "Nostril": 40,
+          "Right foreleg": 1100, "Left ear furnishing": 60, "Right ear furnishing": 60, "Left ear": 700,
+          "Right ear": 700, "Left eye": 700, "Right eye": 700, "Game tail": 1400, "Game tail tip": 1000,
+          "Furred lid": 300, "Upper lid": 220, "Nostril": 40, "Whisker dot": 30,
           "Collar strap": 1400, "Collar stitch": 360, "Collar bell": 300}
 for o in list(scene.objects):
     if o.type != "MESH":
