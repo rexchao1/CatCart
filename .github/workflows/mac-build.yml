@@ -148,4 +148,4 @@ jobs:
           [ "$ART" = "true" ] && git add CatCart/Models/*.scn || true
           git diff --cached --quiet && exit 0
           git commit -m "CI screenshots for ${GITHUB_SHA::7} [skip ci]"
-          for i in 1 2 3; do git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 3; done
+          for i in 1 2 3; do git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 3; done

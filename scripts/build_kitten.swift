@@ -73,7 +73,7 @@ func nscolor(_ h: UInt32) -> NSColor {
 let furShells = 8
 /// How far the top copy stands off the skin where the fur length is 1 (meters,
 /// before the cart's 1.25 scale).
-let furDepth: Float = 0.017
+let furDepth: Float = 0.023
 /// How far the fur leans the way it lies (down her back, back from her nose),
 /// for each meter it stands up. Cat fur lies down; it doesn't stand like a brush.
 let furComb: Float = 0.9
@@ -101,9 +101,9 @@ func furShader(level: Float) -> String {
     if (furLevel > 0.0 && (furH < furLevel * 0.92 || furD > furR)) {
         discard_fragment();
     }
-    _surface.diffuse.rgb *= (0.76 + 0.36 * furLevel) * (0.94 + 0.12 * furH);
+    _surface.diffuse.rgb *= (0.66 + 0.48 * furLevel) * (0.93 + 0.14 * furH);
     float furRim = 1.0 - saturate(dot(normalize(_surface.normal), normalize(_surface.view)));
-    _surface.emission.rgb += _surface.diffuse.rgb * (furRim * furRim * furRim) * (0.1 + 0.28 * furLevel);
+    _surface.emission.rgb += _surface.diffuse.rgb * (furRim * furRim * furRim) * (0.16 + 0.42 * furLevel);
     """
 }
 
